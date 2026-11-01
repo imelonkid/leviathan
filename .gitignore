@@ -1,0 +1,20 @@
+# —— Godot ——
+.godot/
+/android/
+export/
+
+# —— 密钥：一律不进 git ——
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+id_rsa*
+id_ed25519*
+
+# —— 本机 ——
+.DS_Store
+.idea/
+.vscode/
+*.log
