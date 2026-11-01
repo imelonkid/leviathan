@@ -96,6 +96,9 @@ leviathan/
 | 近处雾浓度 | `main.gd` → `volumetric_fog_density` |
 | 远处雾浓度（利维坦清晰度） | `main.gd` → `fog_density` |
 | 主光亮度 / 角度 | `main.gd` → `sun.light_energy` / `sun.rotation_degrees` |
+| 走道暗部亮度（墙面） | `main.gd` → `ambient_light_energy` |
+| 走道地面亮度（竖直天光） | `main.gd` → `sky_fill.light_energy` |
+| 走道里雾的亮度 | `main.gd` → `volumetric_fog_ambient_inject` |
 | 迷宫布局 | `maze.gd` → `seed_value`（运行时按 R 随机） |
 | 迷宫大小 / 走道宽度 | `maze.gd` → `cells` / `block` |
 | 墙高范围 | `maze.gd` → `_build_walls()` 中的 `randf_range` |
