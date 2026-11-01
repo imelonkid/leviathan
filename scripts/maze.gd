@@ -1,17 +1,22 @@
 extends Node3D
-## 把 maze_gen.gd 生成的网格数据搭成场景：墙、地面、楼梯、平台、窄桥。
-## 所有方块按材质合进两个 MultiMesh（各一次绘制），碰撞是一个静态体下挂多个盒子。
+## 把 maze_gen.gd 生成的网格数据搭成场景：墙、挡土墙、地面、楼梯、平台、窄桥，
+## 再在围墙外铺一圈走不到的迷宫，一直延伸进雾里。
+## 所有方块按材质合进几个 MultiMesh（各一次绘制），碰撞是一个静态体下挂多个盒子。
 
 const MazeGen = preload("res://scripts/maze_gen.gd")
 
 const BOTTOM := -60.0            # 墙和地面柱一直延伸到这里，深渊底下是雾
 const KILL_Y := -25.0            # 掉到这个高度以下就重生
-const STEPS := 6                 # 每段楼梯的台阶数
+const STEPS := 8                 # 每块楼梯的台阶数
+const FIELD_RADIUS := 420.0      # 围墙外装饰迷宫的范围（米）
 const PLANK_W := 1.4             # 窄桥宽度
 const PLANK_T := 0.4
 const PLATFORM_W := 3.4
+const RAIL_T := 0.35             # 观景台栏杆：看起来齐腰高，碰撞做高一些，跳不过去
+const RAIL_H := 1.0
+const RAIL_BLOCK_H := 2.4
 
-@export var cells := 17          # 每边的格子数
+@export var cells := 25          # 每边的格子数
 @export var block := 5.0         # 一个网格块的边长（米），走道和墙同宽
 @export var seed_value := 666
 
@@ -21,6 +26,7 @@ var wall_mat: StandardMaterial3D
 var floor_mat: StandardMaterial3D
 var wall_boxes: Array[Transform3D] = []
 var floor_boxes: Array[Transform3D] = []
+var field_boxes: Array[Transform3D] = []
 var body: StaticBody3D
 
 
@@ -37,10 +43,12 @@ func build() -> void:
 	n = gen.n
 	wall_boxes.clear()
 	floor_boxes.clear()
+	field_boxes.clear()
 
 	body = StaticBody3D.new()
 	add_child(body)
 	_build_walls()
+	_build_band_rails()
 	_build_floors()
 	for z in n:
 		for x in n:
@@ -52,8 +60,10 @@ func build() -> void:
 				MazeGen.PLATFORM:
 					_build_platform(x, z)
 	_build_plaza_monoliths()
+	_build_outer_field()
 	_commit(wall_boxes, wall_mat)
 	_commit(floor_boxes, floor_mat)
+	_commit(field_boxes, wall_mat, false)
 
 
 ## 出生点：左下角第一个格子
@@ -152,24 +162,55 @@ func _slope_basis(dir: Vector2i, rise: float, run: float) -> Basis:
 	return Basis(side, up, side.cross(up))
 
 
+func _is_solid(x: int, z: int) -> bool:
+	var k: int = gen.kind[z][x]
+	return k == MazeGen.WALL or k == MazeGen.PARAPET
+
+
 ## 按行合并：同样高度的连续墙（含矮墙）合成一段
 func _build_walls() -> void:
 	for z in n:
 		var x := 0
 		while x < n:
-			var k: int = gen.kind[z][x]
-			if k != MazeGen.WALL and k != MazeGen.PARAPET:
+			if not _is_solid(x, z):
 				x += 1
 				continue
 			var start := x
 			var top: float = gen.wall_top[z][x]
-			while x < n and (gen.kind[z][x] == MazeGen.WALL or gen.kind[z][x] == MazeGen.PARAPET) \
-					and is_equal_approx(gen.wall_top[z][x], top):
+			while x < n and _is_solid(x, z) and is_equal_approx(gen.wall_top[z][x], top):
 				x += 1
 			_add_column(wall_boxes, start, x - 1, z, top)
 
 
-## 按行合并：同一层的连续平地合成一根实心柱
+## 观景台：一根实心柱顶到高层地面；凡是邻块比它低（崖边、楼梯槽、深渊）的那条边立一道栏杆。
+## 栏杆看起来齐腰高，不挡往下看的视线；碰撞做到 RAIL_BLOCK_H，跳不过去
+func _build_band_rails() -> void:
+	for z in n:
+		for x in n:
+			if gen.kind[z][x] != MazeGen.TERRACE:
+				continue
+			var top: float = gen.height[z][x]
+			_add_column(floor_boxes, x, x, z, top)
+			var center := _block_to_world(x, z)
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx := x + d.x
+				var nz := z + d.y
+				if nx < 0 or nz < 0 or nx >= n or nz >= n:
+					continue
+				var nk: int = gen.kind[nz][nx]
+				var same_level: bool = gen.is_open(nx, nz) and nk != MazeGen.STAIR \
+					and is_equal_approx(gen.height[nz][nx], top)
+				var tall_wall: bool = _is_solid(nx, nz) and gen.wall_top[nz][nx] > top + RAIL_BLOCK_H
+				if same_level or tall_wall:
+					continue
+				var f := Vector3(d.x, 0, d.y)
+				var edge := center + f * (block - RAIL_T) / 2.0
+				var size := Vector3(RAIL_T, 0, block) if d.x != 0 else Vector3(block, 0, RAIL_T)
+				_add_box(wall_boxes, edge + Vector3(0, top + RAIL_H / 2.0, 0), size + Vector3(0, RAIL_H, 0), Basis.IDENTITY, false)
+				_add_collider(edge + Vector3(0, top + RAIL_BLOCK_H / 2.0, 0), size + Vector3(0, RAIL_BLOCK_H, 0))
+
+
+## 按行合并：同样高度的连续平地合成一根实心柱
 func _build_floors() -> void:
 	for z in n:
 		var x := 0
@@ -178,16 +219,16 @@ func _build_floors() -> void:
 				x += 1
 				continue
 			var start := x
-			var lv: int = gen.level[z][x]
-			while x < n and gen.kind[z][x] == MazeGen.FLOOR and gen.level[z][x] == lv:
+			var h: float = gen.height[z][x]
+			while x < n and gen.kind[z][x] == MazeGen.FLOOR and is_equal_approx(gen.height[z][x], h):
 				x += 1
-			_add_column(floor_boxes, start, x - 1, z, lv * MazeGen.LEVEL_H)
+			_add_column(floor_boxes, start, x - 1, z, h)
 
 
 ## 楼梯：低端的实心柱 + 台阶（只是外观）+ 一块斜坡碰撞（走起来顺）
 func _build_stair(x: int, z: int) -> void:
-	var base: float = gen.level[z][x] * MazeGen.LEVEL_H
-	var rise := MazeGen.LEVEL_H
+	var base: float = gen.height[z][x]
+	var rise := MazeGen.STAIR_RISE
 	var dir: Vector2i = gen.link[z][x]
 	var f := Vector3(dir.x, 0, dir.y)
 	var side := Vector3(absf(f.z), 0, absf(f.x))
@@ -211,19 +252,19 @@ func _build_stair(x: int, z: int) -> void:
 ## 窄桥：从一个格子中心搭到下一个格子中心，有高差就斜着搭
 func _build_bridge(x: int, z: int) -> void:
 	var dir: Vector2i = gen.link[z][x]
-	var lo: int = gen.level[z - dir.y][x - dir.x]
-	var hi: int = gen.level[z + dir.y][x + dir.x]
-	var rise := (hi - lo) * MazeGen.LEVEL_H
+	var lo: float = gen.height[z - dir.y][x - dir.x]
+	var hi: float = gen.height[z + dir.y][x + dir.x]
+	var rise := hi - lo
 	var run := block * 2.0
 	var rot := _slope_basis(dir, rise, run)
-	var center := _block_to_world(x, z) + Vector3(0, lo * MazeGen.LEVEL_H + rise / 2.0, 0) \
+	var center := _block_to_world(x, z) + Vector3(0, lo + rise / 2.0, 0) \
 		- rot.y * (PLANK_T / 2.0)
 	_add_box(floor_boxes, center, Vector3(PLANK_W, PLANK_T, sqrt(run * run + rise * rise)), rot)
 
 
 ## 悬空平台：一块石板立在细柱上；朝区外开口的方向补一段短桥接上通道
 func _build_platform(x: int, z: int) -> void:
-	var top: float = gen.level[z][x] * MazeGen.LEVEL_H
+	var top: float = gen.height[z][x]
 	var center := _block_to_world(x, z)
 	_add_box(floor_boxes, center + Vector3(0, top - 0.5, 0), Vector3(PLATFORM_W, 1.0, PLATFORM_W))
 	var pillar_h := top - 1.0 - BOTTOM
@@ -243,16 +284,53 @@ func _build_platform(x: int, z: int) -> void:
 		_add_box(floor_boxes, c, size)
 
 
-## 广场四角的方尖柱，给中心一点仪式感
+## 顶层广场四角的方尖柱，给中心一点仪式感
 func _build_plaza_monoliths() -> void:
 	var c := n / 2
+	var base: float = gen.height[c][c]
 	for off: Vector2i in [Vector2i(-3, -3), Vector2i(3, -3), Vector2i(-3, 3), Vector2i(3, 3)]:
 		var p := _block_to_world(c + off.x, c + off.y)
-		var h := 55.0
-		_add_box(wall_boxes, p + Vector3(0, h / 2.0, 0), Vector3(2.0, h, 2.0))
+		var h := 30.0
+		_add_box(wall_boxes, p + Vector3(0, base + h / 2.0, 0), Vector3(2.0, h, 2.0))
 
 
-func _commit(list: Array[Transform3D], mat: Material) -> void:
+## 围墙外的装饰迷宫：走不到、没有碰撞、不投影，只是让迷宫看起来一直延伸到地平线。
+## 网格规则同主迷宫：偶数行偶数列是墙角，奇数行奇数列是空地，其余随机立墙。
+func _build_outer_field() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_value + 1
+	var inner := n * block / 2.0 + block
+	var count := int(FIELD_RADIUS / block)
+	for zi in range(-count, count + 1):
+		var row: Array[bool] = []
+		for xi in range(-count, count + 1):
+			var inside := absf(xi * block) < inner and absf(zi * block) < inner
+			var corner := xi % 2 == 0 and zi % 2 == 0
+			var between := (xi + zi) % 2 != 0
+			row.append(not inside and (corner or (between and r.randf() < 0.55)))
+		var i := 0
+		while i < row.size():
+			if not row[i]:
+				i += 1
+				continue
+			var start := i
+			while i < row.size() and row[i]:
+				i += 1
+			var h := r.randf_range(6.0, 26.0)
+			var x0 := (start - count) * block
+			var x1 := (i - 1 - count) * block
+			var center := Vector3((x0 + x1) / 2.0, (BOTTOM + h) / 2.0, zi * block)
+			field_boxes.append(Transform3D(Basis.from_scale(Vector3(x1 - x0 + block, h - BOTTOM, block)), center))
+	# 装饰迷宫的地面：围着主迷宫的四块，不能伸到主迷宫底下（深渊区会露出来）
+	var w := FIELD_RADIUS - inner
+	var mid := (FIELD_RADIUS + inner) / 2.0
+	var full := FIELD_RADIUS * 2.0
+	for t: Array in [[Vector3(0, 0, mid), Vector3(full, 1, w)], [Vector3(0, 0, -mid), Vector3(full, 1, w)],
+			[Vector3(mid, 0, 0), Vector3(w, 1, inner * 2.0)], [Vector3(-mid, 0, 0), Vector3(w, 1, inner * 2.0)]]:
+		field_boxes.append(Transform3D(Basis.from_scale(t[1]), t[0] + Vector3(0, -0.5, 0)))
+
+
+func _commit(list: Array[Transform3D], mat: Material, shadows := true) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = BoxMesh.new()
@@ -262,4 +340,6 @@ func _commit(list: Array[Transform3D], mat: Material) -> void:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.material_override = mat
+	if not shadows:
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mmi)
