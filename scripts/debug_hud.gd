@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 调试信息（F3）与俯视小地图（M）。都默认关闭，不影响沉浸感。
+## 调试信息（F3，默认关闭）与俯视小地图（M，默认显示，迷宫太大，没有它完全没头绪）。
 
 var maze: Node3D
 var player: CharacterBody3D
@@ -19,7 +19,7 @@ func _ready() -> void:
 
 	minimap = Minimap.new()
 	minimap.hud = self
-	minimap.visible = false
+	minimap.visible = true
 	add_child(minimap)
 
 
@@ -46,7 +46,7 @@ func _process(_delta: float) -> void:
 		minimap.queue_redraw()
 
 
-## 右上角的俯视图：地面按层数由暗到亮，楼梯橙色，桥和平台浅蓝，深渊全黑
+## 右上角的俯视图：地面按高度由暗到亮，楼梯橙色，桥和平台浅蓝，观景台褐色，深渊全黑
 class Minimap extends Control:
 	const SIZE := 280.0
 	const MazeGen = preload("res://scripts/maze_gen.gd")
@@ -75,8 +75,10 @@ class Minimap extends Control:
 						color = Color(0.55, 0.6, 0.65, 0.9)
 					MazeGen.PARAPET:
 						color = Color(0.4, 0.42, 0.45, 0.9)
+					MazeGen.TERRACE:
+						color = Color(0.45, 0.38, 0.32, 0.9)
 					MazeGen.FLOOR:
-						var t: float = gen.level[z][x] / float(MazeGen.MAX_LEVEL)
+						var t: float = gen.height[z][x] / (MazeGen.TOP_TIER * MazeGen.TIER_H)
 						color = Color(0.1, 0.12, 0.14).lerp(Color(0.3, 0.34, 0.38), t)
 					MazeGen.STAIR:
 						color = Color(0.75, 0.5, 0.25)

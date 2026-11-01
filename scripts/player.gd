@@ -1,6 +1,6 @@
 extends CharacterBody3D
 ## 第一人称漫游：WASD 移动，Shift 奔跑，空格跳，F 开关提灯。
-## V 切换飞行模式（调试用）：穿墙、无重力，空格上升、Ctrl 下降。
+## V 切换飞行：穿墙、无重力，空格上升、Ctrl 下降、Shift 加速，可以飞起来俯瞰整座地狱。
 
 const WALK_SPEED := 5.0
 const RUN_SPEED := 10.0
