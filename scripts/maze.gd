@@ -1,5 +1,6 @@
 extends Node3D
 ## 程序化迷宫：递归回溯生成 + 少量回路，中心留出一片广场，正对利维坦。
+## 所有墙块合进一个 MultiMesh（一次绘制），碰撞是一个静态体下挂多个盒子。
 
 @export var cells := 17          # 每边的格子数
 @export var block := 5.0         # 一个网格块的边长（米），走道和墙同宽
@@ -10,18 +11,30 @@ var grid: Array = []             # grid[z][x] == true 表示墙
 var rng := RandomNumberGenerator.new()
 var wall_mat: StandardMaterial3D
 var floor_mat: StandardMaterial3D
+var boxes: Array = []            # 本次生成的墙块 [[中心, 尺寸], ...]
+var body: StaticBody3D
 
 
+## 可重复调用：换了 seed_value 再调一次就是新迷宫
 func build() -> void:
+	for child in get_children():
+		child.queue_free()
+	if wall_mat == null:
+		_make_materials()
+
 	rng.seed = seed_value
 	n = cells * 2 + 1
+	boxes.clear()
 	_generate()
 	_add_loops()
 	_carve_plaza()
-	_make_materials()
+
+	body = StaticBody3D.new()
+	add_child(body)
 	_build_floor()
 	_build_walls()
 	_build_plaza_monoliths()
+	_commit_boxes()
 
 
 ## 出生点：左下角第一个格子
@@ -32,6 +45,12 @@ func get_spawn_position() -> Vector3:
 func _block_to_world(x: int, z: int) -> Vector3:
 	var half := n / 2.0
 	return Vector3((x - half + 0.5) * block, 0.0, (z - half + 0.5) * block)
+
+
+## 世界坐标 → 网格块坐标（小地图用），不做越界裁剪
+func world_to_block(p: Vector3) -> Vector2:
+	var half := n / 2.0
+	return Vector2(p.x / block + half, p.z / block + half)
 
 
 func _open_cell(c: Vector2i) -> void:
@@ -118,6 +137,7 @@ func _make_materials() -> void:
 	wall_mat.normal_texture = normal
 	wall_mat.roughness = 0.92
 	wall_mat.uv1_triplanar = true
+	wall_mat.uv1_world_triplanar = true   # 墙块是缩放过的实例，按世界坐标贴图才不会拉伸
 	wall_mat.uv1_scale = Vector3(0.08, 0.08, 0.08)
 
 	floor_mat = StandardMaterial3D.new()
@@ -127,34 +147,56 @@ func _make_materials() -> void:
 	floor_mat.normal_texture = normal
 	floor_mat.roughness = 0.55   # 略带潮湿反光
 	floor_mat.uv1_triplanar = true
+	floor_mat.uv1_world_triplanar = true
 	floor_mat.uv1_scale = Vector3(0.12, 0.12, 0.12)
 
 
-func _add_box(center: Vector3, size: Vector3, mat: Material) -> void:
-	var body := StaticBody3D.new()
-	add_child(body)
-	body.position = center
-
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = mat
-	body.add_child(mi)
-
+func _add_box(center: Vector3, size: Vector3) -> void:
+	boxes.append([center, size])
 	var shape := BoxShape3D.new()
 	shape.size = size
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
+	cs.position = center
 	body.add_child(cs)
 
 
+## 把收集到的墙块一次性写进 MultiMesh：单位立方体按尺寸缩放
+func _commit_boxes() -> void:
+	var cube := BoxMesh.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = cube
+	mm.instance_count = boxes.size()
+	for i in boxes.size():
+		var center: Vector3 = boxes[i][0]
+		var size: Vector3 = boxes[i][1]
+		mm.set_instance_transform(i, Transform3D(Basis.from_scale(size), center))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = wall_mat
+	add_child(mmi)
+
+
 func _build_floor() -> void:
-	var size := n * block
-	_add_box(Vector3(0, -0.5, 0), Vector3(size, 1.0, size), floor_mat)
+	var size := Vector3(n * block, 1.0, n * block)
+	var center := Vector3(0, -0.5, 0)
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = floor_mat
+	mi.position = center
+	add_child(mi)
+	var shape := BoxShape3D.new()
+	shape.size = size
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	cs.position = center
+	body.add_child(cs)
 
 
-## 按行合并连续的墙块，减少节点数；每段墙高度随机，外圈最高
+## 按行合并连续的墙块，减少实例和碰撞体数量；每段墙高度随机，外圈最高
 func _build_walls() -> void:
 	for z in n:
 		var x := 0
@@ -171,7 +213,7 @@ func _build_walls() -> void:
 			var a := _block_to_world(start, z)
 			var b := _block_to_world(x - 1, z)
 			var center := (a + b) / 2.0 + Vector3(0, h / 2.0, 0)
-			_add_box(center, Vector3(length * block, h, block), wall_mat)
+			_add_box(center, Vector3(length * block, h, block))
 
 
 ## 广场四角的方尖柱，给中心一点仪式感
@@ -180,4 +222,4 @@ func _build_plaza_monoliths() -> void:
 	for off: Vector2i in [Vector2i(-3, -3), Vector2i(3, -3), Vector2i(-3, 3), Vector2i(3, 3)]:
 		var p := _block_to_world(c + off.x, c + off.y)
 		var h := 55.0
-		_add_box(p + Vector3(0, h / 2.0, 0), Vector3(2.0, h, 2.0), wall_mat)
+		_add_box(p + Vector3(0, h / 2.0, 0), Vector3(2.0, h, 2.0))

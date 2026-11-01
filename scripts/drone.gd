@@ -33,6 +33,14 @@ func _ready() -> void:
 	playback = get_stream_playback() as AudioStreamGeneratorPlayback
 
 
+## 关窗口时先停播放、放掉 playback 的引用，否则退出时报 ObjectDB 泄漏。
+## 音频线程要几帧才真正释放它，所以 main 会晚一点再退出。
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		stop()
+		playback = null
+
+
 func _build_pattern() -> void:
 	var tt := 5.0
 	for letter: String in ["--.", "---", "-.."]:

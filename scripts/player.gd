@@ -1,26 +1,32 @@
 extends CharacterBody3D
-## 第一人称漫游：WASD 移动，Shift 奔跑，空格跳，F 开关提灯，Esc 释放鼠标。
+## 第一人称漫游：WASD 移动，Shift 奔跑，空格跳，F 开关提灯。
+## V 切换飞行模式（调试用）：穿墙、无重力，空格上升、Ctrl 下降。
 
 const WALK_SPEED := 5.0
 const RUN_SPEED := 10.0
 const JUMP_VELOCITY := 5.0
-const MOUSE_SENS := 0.0025
+const FLY_SPEED := 15.0
+const FLY_FAST_SPEED := 60.0
+
+var settings: Node               # 鼠标灵敏度从这里读，由 main 注入
+var flying := false
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var head: Node3D
 var cam: Camera3D
 var lamp: SpotLight3D
 var bob_t := 0.0
+var collider: CollisionShape3D
 
 
 func _ready() -> void:
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.4
 	cap.height = 1.8
-	var cs := CollisionShape3D.new()
-	cs.shape = cap
-	cs.position.y = 0.9
-	add_child(cs)
+	collider = CollisionShape3D.new()
+	collider.shape = cap
+	collider.position.y = 0.9
+	add_child(collider)
 
 	head = Node3D.new()
 	head.position.y = 1.65
@@ -46,39 +52,53 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
+	if event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
-		rotate_y(-mm.relative.x * MOUSE_SENS)
-		head.rotate_x(-mm.relative.y * MOUSE_SENS)
+		var sens: float = settings.get_value("mouse_sens")
+		rotate_y(-mm.relative.x * sens)
+		head.rotate_x(-mm.relative.y * sens)
 		head.rotation.x = clampf(head.rotation.x, deg_to_rad(-89.0), deg_to_rad(89.0))
-	elif event is InputEventMouseButton and event.pressed:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif event is InputEventKey and event.pressed and not event.echo:
 		var key := (event as InputEventKey).physical_keycode
-		if key == KEY_ESCAPE:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif key == KEY_F:
+		if key == KEY_F:
 			lamp.visible = not lamp.visible
+		elif key == KEY_V:
+			set_flying(not flying)
+
+
+func set_flying(on: bool) -> void:
+	flying = on
+	collider.disabled = on
+	velocity = Vector3.ZERO
 
 
 func _physics_process(delta: float) -> void:
+	# 菜单打开时（鼠标未锁定）不响应移动
+	var active := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var input := Vector2.ZERO
+	if active:
+		if Input.is_physical_key_pressed(KEY_W):
+			input.y -= 1.0
+		if Input.is_physical_key_pressed(KEY_S):
+			input.y += 1.0
+		if Input.is_physical_key_pressed(KEY_A):
+			input.x -= 1.0
+		if Input.is_physical_key_pressed(KEY_D):
+			input.x += 1.0
+
+	if flying:
+		_fly(input, active)
+		return
+
 	if not is_on_floor():
 		velocity.y -= gravity * delta
-	elif Input.is_physical_key_pressed(KEY_SPACE):
+	elif active and Input.is_physical_key_pressed(KEY_SPACE):
 		velocity.y = JUMP_VELOCITY
 
-	var input := Vector2.ZERO
-	if Input.is_physical_key_pressed(KEY_W):
-		input.y -= 1.0
-	if Input.is_physical_key_pressed(KEY_S):
-		input.y += 1.0
-	if Input.is_physical_key_pressed(KEY_A):
-		input.x -= 1.0
-	if Input.is_physical_key_pressed(KEY_D):
-		input.x += 1.0
-
 	var dir := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
-	var speed := RUN_SPEED if Input.is_physical_key_pressed(KEY_SHIFT) else WALK_SPEED
+	var speed := RUN_SPEED if active and Input.is_physical_key_pressed(KEY_SHIFT) else WALK_SPEED
 	var accel := 10.0 if is_on_floor() else 2.0
 	velocity.x = lerpf(velocity.x, dir.x * speed, accel * delta)
 	velocity.z = lerpf(velocity.z, dir.z * speed, accel * delta)
@@ -89,3 +109,16 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and horizontal > 0.5:
 		bob_t += delta * horizontal * 1.4
 	cam.position.y = sin(bob_t) * 0.04
+
+
+## 飞行：沿视线方向移动，不受碰撞和重力影响
+func _fly(input: Vector2, active: bool) -> void:
+	var look := cam.global_transform.basis
+	var dir := look * Vector3(input.x, 0, input.y)
+	if active and Input.is_physical_key_pressed(KEY_SPACE):
+		dir.y += 1.0
+	if active and Input.is_physical_key_pressed(KEY_CTRL):
+		dir.y -= 1.0
+	var speed := FLY_FAST_SPEED if active and Input.is_physical_key_pressed(KEY_SHIFT) else FLY_SPEED
+	velocity = dir.normalized() * speed
+	move_and_slide()
