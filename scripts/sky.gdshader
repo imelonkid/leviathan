@@ -8,13 +8,13 @@ shader_type sky;
 
 global uniform float lightning;
 
-uniform vec3 zenith : source_color = vec3(0.06, 0.08, 0.13);
-uniform vec3 horizon : source_color = vec3(0.16, 0.2, 0.28);
-uniform vec3 glow_color : source_color = vec3(0.55, 0.62, 0.75);  // 云后亮处的天光
+uniform vec3 zenith : source_color = vec3(0.035, 0.045, 0.07);
+uniform vec3 horizon : source_color = vec3(0.1, 0.12, 0.17);
+uniform vec3 glow_color : source_color = vec3(0.3, 0.34, 0.42);  // 云后亮处的天光
 uniform vec3 light_dir = vec3(-0.45, 0.42, -0.78);               // 亮处的方向（左上、利维坦后方）
-uniform vec3 light_color : source_color = vec3(0.95, 1.0, 1.1);
-uniform vec3 shadow_color : source_color = vec3(0.02, 0.026, 0.045);  // 云底、云心最暗处
-uniform vec3 ambient_color : source_color = vec3(0.22, 0.27, 0.36);  // 云顶接到的天光
+uniform vec3 light_color : source_color = vec3(0.5, 0.55, 0.64);
+uniform vec3 shadow_color : source_color = vec3(0.012, 0.015, 0.025);  // 云底、云心最暗处
+uniform vec3 ambient_color : source_color = vec3(0.08, 0.1, 0.14);   // 云顶接到的天光
 uniform vec3 flash_color : source_color = vec3(0.65, 0.72, 1.0);
 uniform float coverage = 0.76;          // 云量：越大越密
 uniform float cloud_bottom = 420.0;     // 云层底和顶（米，相对镜头）
@@ -96,7 +96,7 @@ vec4 march(vec3 dir) {
 			float hf = (p.y - cloud_bottom) / (cloud_top - cloud_bottom);
 			vec3 c = mix(shadow_color, ambient_color, clamp(hf * 1.4 + 0.1, 0.0, 1.0));
 			// 主光：朝亮处的一面被照亮，背光的边缘透出亮边
-			c += light_color * phase * lit * 0.8;
+			c += light_color * phase * lit * 0.45;
 			// 闪电从云里面照亮
 			c += flash_color * lightning * (0.25 + 0.5 * (1.0 - lit));
 			float a = 1.0 - exp(-d * dt * 0.02);
@@ -118,7 +118,7 @@ vec3 background(vec3 dir) {
 	vec3 col = mix(horizon, zenith, smoothstep(0.0, 0.6, dir.y));
 	// 云后亮处的一片天光，只有在云缝里看得见
 	float g = pow(max(dot(dir, normalize(light_dir)), 0.0), 8.0);
-	col += glow_color * g * 0.8;
+	col += glow_color * g * 0.5;
 	return col + flash_color * lightning * 0.15;
 }
 

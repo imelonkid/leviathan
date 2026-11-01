@@ -8,7 +8,12 @@ const HALF_WIDTH := 42.0         # 宽高比约 1:4，太瘦就没有分量
 const HALF_HEIGHT := 170.0
 const BEAM_LEN := 420.0
 const BEAM_COUNT := 2
-const BEAM_DIP := 55.0           # 光束从水平往下的角度：从 250 米高空斜射，落在迷宫外沿附近
+const BEAM_DIP := 66.0           # 光束从水平往下的角度：从 250 米高空斜射，落地处离中心约 110 米，扫过迷宫各层
+const BEAM_CONES := [            # 每束由三层锥体叠成：[起点半径, 远端半径, 不透明度, 锐度]
+	[2.5, 16.0, 1.0, 0.5],       # 实心的芯
+	[5.0, 34.0, 1.0, 1.4],       # 主体
+	[10.0, 75.0, 0.6, 1.0],      # 外面的暗晕
+]
 const BEAM_SPEED := 0.12         # 光束旋转的角速度（弧度/秒），约 52 秒转一圈
 const BODY_LAYER := 2            # 本体单独放一个渲染层，专属主光只照它
 
@@ -104,23 +109,22 @@ void vertex() {
 }
 void fragment() {
 	float core = pow(abs(dot(NORMAL, VIEW)), sharpness);
-	float fade = smoothstep(0.0, 0.06, along) * (1.0 - smoothstep(0.2, 0.68, along));
+	float fade = smoothstep(0.0, 0.04, along) * (1.0 - smoothstep(0.62, 0.95, along));
 	// 往外流动的暗纹，让它像在“发射”而不是静止的柱子
 	float flow = 0.8 + 0.2 * sin(angle * 7.0 + along * 60.0 - TIME * 4.0) * sin(angle * 3.0 - TIME * 1.1);
 	ALBEDO = vec3(0.0);
 	ALPHA = clamp(core * fade * flow * strength, 0.0, 1.0);
 }
 """
-	var core_mat := ShaderMaterial.new()
-	core_mat.shader = shader
-	core_mat.set_shader_parameter("length", BEAM_LEN)
-	core_mat.render_priority = 1
-	var halo_mat := ShaderMaterial.new()
-	halo_mat.shader = shader
-	halo_mat.set_shader_parameter("length", BEAM_LEN)
-	halo_mat.set_shader_parameter("strength", 0.35)
-	halo_mat.set_shader_parameter("sharpness", 1.0)
-	halo_mat.render_priority = 1
+	var mats: Array[ShaderMaterial] = []
+	for c: Array in BEAM_CONES:
+		var m := ShaderMaterial.new()
+		m.shader = shader
+		m.set_shader_parameter("length", BEAM_LEN)
+		m.set_shader_parameter("strength", c[2])
+		m.set_shader_parameter("sharpness", c[3])
+		m.render_priority = 1
+		mats.append(m)
 
 	for i in BEAM_COUNT:
 		var root := Node3D.new()
@@ -132,17 +136,17 @@ void fragment() {
 		tilt.rotation.x = deg_to_rad(90.0 - BEAM_DIP)
 		root.add_child(tilt)
 
-		for layer: Array in [[4.0, 30.0, core_mat], [9.0, 70.0, halo_mat]]:
+		for k in BEAM_CONES.size():
 			var cone := CylinderMesh.new()
-			cone.top_radius = layer[0]
-			cone.bottom_radius = layer[1]
+			cone.top_radius = BEAM_CONES[k][0]
+			cone.bottom_radius = BEAM_CONES[k][1]
 			cone.height = BEAM_LEN
 			cone.radial_segments = 48
 			cone.cap_top = false
 			cone.cap_bottom = false
 			var mi := MeshInstance3D.new()
 			mi.mesh = cone
-			mi.material_override = layer[2]
+			mi.material_override = mats[k]
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.position.y = -BEAM_LEN / 2.0
 			tilt.add_child(mi)
@@ -153,3 +157,22 @@ void fragment() {
 func _process(delta: float) -> void:
 	spin.rotate_y(delta * 0.06)
 	beam_pivot.rotate_y(delta * BEAM_SPEED)
+
+
+## 某一点被黑光照到的程度（0～1）：在光锥的芯里是 1，到暗晕外缘降到 0。
+## main 用它给镜头加“被黑光打中”的画面和声音
+func beam_exposure(p: Vector3) -> float:
+	var best := 0.0
+	var origin := beam_pivot.global_position
+	for b in beams:
+		var dir := -b.global_transform.basis.y
+		var v := p - origin
+		var along := v.dot(dir)
+		if along <= 0.0 or along > BEAM_LEN * 0.95:
+			continue
+		var k := along / BEAM_LEN
+		var radial := (v - dir * along).length()
+		var inner := lerpf(BEAM_CONES[1][0], BEAM_CONES[1][1], k) * 0.6
+		var outer := lerpf(BEAM_CONES[2][0], BEAM_CONES[2][1], k)
+		best = maxf(best, 1.0 - smoothstep(inner, outer, radial))
+	return best

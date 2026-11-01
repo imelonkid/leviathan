@@ -9,6 +9,7 @@ const Settings = preload("res://scripts/settings.gd")
 const Menu = preload("res://scripts/menu.gd")
 const DebugHud = preload("res://scripts/debug_hud.gd")
 const Storm = preload("res://scripts/storm.gd")
+const BeamFx = preload("res://scripts/beam_fx.gd")
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
 const VANTAGE_HEIGHT := 55.0     # 开局悬停的高度：在外圈围墙外，仰望利维坦和风暴
@@ -16,6 +17,9 @@ const VANTAGE_OUT := 45.0        # 离迷宫外沿多远
 
 var settings: Node
 var env: Environment
+var lev: Node3D
+var drone: Node
+var beam_fx: CanvasLayer
 var maze: Node3D
 var player: CharacterBody3D
 
@@ -33,7 +37,7 @@ func _ready() -> void:
 	add_child(maze)
 	maze.build()
 
-	var lev := Leviathan.new()
+	lev = Leviathan.new()
 	lev.name = "Leviathan"
 	add_child(lev)
 	lev.position = Vector3(0, LEVIATHAN_HEIGHT, 0)
@@ -44,7 +48,7 @@ func _ready() -> void:
 	add_child(player)
 	_spawn_player()
 
-	var drone := Drone.new()
+	drone = Drone.new()
 	drone.name = "Drone"
 	add_child(drone)
 
@@ -62,6 +66,10 @@ func _ready() -> void:
 	debug.player = player
 	add_child(debug)
 
+	beam_fx = BeamFx.new()
+	beam_fx.player = player
+	add_child(beam_fx)
+
 	var menu := Menu.new()
 	menu.settings = settings
 	add_child(menu)
@@ -74,6 +82,13 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		await get_tree().create_timer(0.2).timeout
 		get_tree().quit()
+
+
+## 镜头被黑光扫中：画面压黑、声音压迫
+func _process(_delta: float) -> void:
+	var e: float = lev.beam_exposure(player.cam.global_position)
+	beam_fx.intensity = e
+	drone.pressure = e
 
 
 ## 掉进深渊：回到最近站稳的位置

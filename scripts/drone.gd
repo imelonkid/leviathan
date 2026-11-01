@@ -1,5 +1,6 @@
 extends AudioStreamPlayer
-## 程序化环境音：持续的低频嗡鸣 + 周期性的号角 + 闪电后的雷声（storm.gd 调用 thunder()）。
+## 程序化环境音：持续的低频嗡鸣 + 周期性的号角 + 闪电后的雷声（storm.gd 调用 thunder()）
+## + 被黑光扫中时的低频压迫声（main 设置 pressure）。
 ## 号角按摩斯电码拼出 "GOD"（--. --- -..），致敬原片配乐的彩蛋。
 
 const RATE := 11025.0
@@ -14,6 +15,8 @@ var thunder_at := -1.0           # 雷声开始的时刻（音频时间）；< 0
 var thunder_gain := 0.0
 var brown := 0.0                 # 布朗噪声的状态：白噪声积分，低沉的轰隆声
 var rumble := 0.0
+var pressure := 0.0              # 被黑光照到的程度（0～1），main 每帧设置
+var pressure_s := 0.0            # 逐个采样平滑过的值，免得音量跳变出爆音
 
 
 func _ready() -> void:
@@ -97,7 +100,15 @@ func _sample() -> float:
 			var swell := (1.0 - exp(-k * 25.0)) * exp(-k * 0.7) * (0.7 + 0.3 * sin(k * 5.3) * sin(k * 2.1))
 			boom = rumble * swell * thunder_gain * 2.2
 
-	return clampf(drone * 0.35 + horn + boom, -1.0, 1.0)
+	# 黑光：一记很低的嗡声，带着搏动，混一点滚动的噪声；同时把平常的嗡鸣压下去
+	pressure_s = lerpf(pressure_s, pressure, 0.0005)
+	var press := 0.0
+	if pressure_s > 0.001:
+		var throb := 0.6 + 0.4 * sin(TAU * 1.7 * t)
+		press = (sin(TAU * 27.5 * t) * 0.6 + sin(TAU * 41.0 * t + sin(TAU * 0.5 * t)) * 0.3 + rumble * 2.0) \
+			* throb * pressure_s * 0.7
+
+	return clampf(drone * 0.35 * (1.0 - pressure_s * 0.6) + horn + boom + press, -1.0, 1.0)
 
 
 func _horn_env(x: float) -> float:
