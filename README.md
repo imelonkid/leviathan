@@ -63,6 +63,9 @@ Esc 菜单里有低 / 中 / 高三档预设，也可以单独调整：
 ## 场景内容
 
 - **迷宫**：35×35 网格（约 175 米见方），递归回溯算法生成，额外打通少量墙制造回路。墙高 18～42 米随机，外圈 70 米。
+- **高差**：地面分 0～4 层（每层 3 米），广场在最低处，越往外越高，走向利维坦就是一路下行。相邻格子最多差一层，差一层的通道是楼梯。
+- **深渊区**：两片没有墙也没有地面的区域，格子变成立在细柱上的悬空平台，通道变成 1.4 米宽的窄桥（有高差时斜着搭）。掉下去会回到最近站稳的位置。
+- **矮墙**：部分隔墙降成 1.4 米高的矮墙，能看见隔壁走道却过不去，两侧有高差时更常见。
 - **中心广场**：9×9 网格的空地，四角立方尖柱，正上方是利维坦。
 - **利维坦**：拉长的菱形体（宽 32 米、高 140 米），悬于 170 米高空，倾斜缓慢自转，棱线发光。
 - **黑光**：三道光束绕中心旋转、来回摆动扫过迷宫，每道亮 7 秒灭 5 秒、彼此错开。用黑色 FogVolume 实现，在体积雾中呈现为“吸走光线”的暗柱。
@@ -78,7 +81,8 @@ leviathan/
 ├── main.tscn            主场景（只有一个根节点，内容全部由脚本生成）
 ├── scripts/
 │   ├── main.gd          入口：环境、灯光、组装各模块、换种子、截图
-│   ├── maze.gd          迷宫生成、墙体（MultiMesh）与地面、材质
+│   ├── maze_gen.gd      迷宫数据生成：类型、层数、楼梯方向、墙高（不碰节点）
+│   ├── maze.gd          把网格数据搭成场景：墙、地面、楼梯、平台、窄桥
 │   ├── leviathan.gd     利维坦本体、棱线、黑光光束
 │   ├── player.gd        第一人称控制器、提灯、飞行模式
 │   ├── drone.gd         程序化环境音与号角
@@ -98,7 +102,12 @@ leviathan/
 | 主光亮度 / 角度 | `main.gd` → `sun.light_energy` / `sun.rotation_degrees` |
 | 迷宫布局 | `maze.gd` → `seed_value`（运行时按 R 随机） |
 | 迷宫大小 / 走道宽度 | `maze.gd` → `cells` / `block` |
-| 墙高范围 | `maze.gd` → `_build_walls()` 中的 `randf_range` |
+| 墙高范围 | `maze_gen.gd` → `_assign_wall_heights()` 中的 `randf_range` |
+| 层数 / 层高 | `maze_gen.gd` → `MAX_LEVEL` / `LEVEL_H` |
+| 楼梯密度 | `maze_gen.gd` → `TERRAIN_FREQ`（越大越密） |
+| 深渊区数量 | `maze_gen.gd` → `CHASM_COUNT` |
+| 矮墙出现概率 | `maze_gen.gd` → `_make_parapets()` |
+| 窄桥宽度 / 平台大小 | `maze.gd` → `PLANK_W` / `PLATFORM_W` |
 | 利维坦高度 | `main.gd` → `LEVIATHAN_HEIGHT` |
 | 利维坦尺寸 | `leviathan.gd` → `HALF_WIDTH` / `HALF_HEIGHT` |
 | 光束数量 / 摆幅 / 明灭节奏 | `leviathan.gd` → `BEAM_COUNT`、`_process()` |

@@ -46,9 +46,10 @@ func _process(_delta: float) -> void:
 		minimap.queue_redraw()
 
 
-## 右上角的俯视图：墙块、玩家位置与朝向、中心广场
+## 右上角的俯视图：地面按层数由暗到亮，楼梯橙色，桥和平台浅蓝，深渊全黑
 class Minimap extends Control:
 	const SIZE := 280.0
+	const MazeGen = preload("res://scripts/maze_gen.gd")
 	var hud: CanvasLayer
 
 	func _ready() -> void:
@@ -62,13 +63,28 @@ class Minimap extends Control:
 
 	func _draw() -> void:
 		var maze: Node3D = hud.maze
+		var gen: RefCounted = maze.gen
 		var n: int = maze.n
 		var cell := SIZE / n
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.6))
 		for z in n:
 			for x in n:
-				if maze.grid[z][x]:
-					draw_rect(Rect2(x * cell, z * cell, cell, cell), Color(0.55, 0.6, 0.65, 0.85))
+				var color: Color
+				match gen.kind[z][x]:
+					MazeGen.WALL:
+						color = Color(0.55, 0.6, 0.65, 0.9)
+					MazeGen.PARAPET:
+						color = Color(0.4, 0.42, 0.45, 0.9)
+					MazeGen.FLOOR:
+						var t: float = gen.level[z][x] / float(MazeGen.MAX_LEVEL)
+						color = Color(0.1, 0.12, 0.14).lerp(Color(0.3, 0.34, 0.38), t)
+					MazeGen.STAIR:
+						color = Color(0.75, 0.5, 0.25)
+					MazeGen.BRIDGE, MazeGen.PLATFORM:
+						color = Color(0.5, 0.7, 0.9)
+					_:
+						continue
+				draw_rect(Rect2(x * cell, z * cell, cell, cell), color)
 		var center := Vector2(n, n) * cell / 2.0
 		draw_circle(center, cell * 1.2, Color(0.6, 0.75, 1.0, 0.8))
 
