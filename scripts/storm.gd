@@ -1,14 +1,18 @@
 extends Node3D
-## 风暴：光线步进的体积乌云（sky.gdshader）、偶尔的闪电。
+## 风暴：光线步进的体积乌云（sky.gdshader）、缠绕利维坦的云环（cloud_ring.gdshader）、偶尔的闪电。
 ## 闪电时通过全局着色器参数 lightning 让天空和云一起亮，再打一盏短暂的平行光照亮整个场景，
 ## 画一道折线状的电光，过一两秒传来雷声（drone.gd）。
 
 const SkyShader = preload("res://scripts/sky.gdshader")
+const CloudRingShader = preload("res://scripts/cloud_ring.gdshader")
 
 const STRIKE_MIN := 5.0          # 两次闪电之间的间隔（秒）
 const STRIKE_MAX := 14.0
 const BOLT_WIDTH := 2.5
 const FLICKER_STEP := 0.08
+const RING_OUTER := 380.0        # 云环包围盒的半宽、半高、中心相对利维坦往上偏多少（米）
+const RING_HALF_H := 180.0
+const RING_Y_BIAS := 30.0
 
 var env: Environment             # main 注入
 var drone: Node                  # main 注入，用来打雷
@@ -25,6 +29,7 @@ var flicker: Array[float] = []   # 本次闪电的亮度变化，每 FLICKER_STE
 func _ready() -> void:
 	rng.randomize()
 	_build_sky()
+	_build_cloud_ring()
 
 	flash_light = DirectionalLight3D.new()
 	flash_light.light_color = Color(0.75, 0.82, 1.0)
@@ -59,6 +64,24 @@ func _build_sky() -> void:
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY
+
+
+## 云环：一个包住利维坦周围的盒子，着色器在里面做体积云（盒子只是给它一块画布）
+func _build_cloud_ring() -> void:
+	var mat := ShaderMaterial.new()
+	mat.shader = CloudRingShader
+	mat.set_shader_parameter("center", center)
+	mat.set_shader_parameter("r_outer", RING_OUTER)
+	mat.set_shader_parameter("half_h", RING_HALF_H)
+	mat.set_shader_parameter("y_bias", RING_Y_BIAS)
+	var box := BoxMesh.new()
+	box.size = Vector3(RING_OUTER * 2.0, RING_HALF_H * 2.0, RING_OUTER * 2.0)
+	var mi := MeshInstance3D.new()
+	mi.mesh = box
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = center + Vector3(0, RING_Y_BIAS, 0)
+	add_child(mi)
 
 
 func _process(delta: float) -> void:
