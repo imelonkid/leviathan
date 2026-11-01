@@ -100,9 +100,11 @@ func _setup_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.015, 0.018, 0.022)
 
+	# 主光照不进 5 米宽的走道，走道里全靠环境光；颜色按 sRGB 转线性后很暗，
+	# 再经 ACES 和对比度压暗部，强度要给到 5 左右墙面才不会被压成纯黑
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.3, 0.34, 0.4)
-	env.ambient_light_energy = 0.2
+	env.ambient_light_energy = 5.0
 
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.1
@@ -118,6 +120,8 @@ func _setup_environment() -> void:
 	env.volumetric_fog_density = 0.02
 	env.volumetric_fog_albedo = Color(0.6, 0.65, 0.7)
 	env.volumetric_fog_emission = Color(0.01, 0.012, 0.015)
+	# 雾也吃一份环境光：走道里的雾略亮，黑光柱在亮雾里更显黑
+	env.volumetric_fog_ambient_inject = 1.0
 	env.volumetric_fog_anisotropy = 0.5
 	env.volumetric_fog_length = 120.0
 
@@ -147,6 +151,16 @@ func _setup_environment() -> void:
 	add_child(sun)
 	sun.rotation_degrees = Vector3(-62, 35, 0)
 	settings.sun = sun
+
+	# 很弱的竖直天光：只照朝上的面（地面、墙顶），让走道地面比墙略亮、能看清路；
+	# 不投影、不进体积雾，黑光周围的雾亮度不受影响
+	var sky_fill := DirectionalLight3D.new()
+	sky_fill.name = "SkyFill"
+	sky_fill.light_color = Color(0.6, 0.68, 0.82)
+	sky_fill.light_energy = 0.35
+	sky_fill.light_volumetric_fog_energy = 0.0
+	add_child(sky_fill)
+	sky_fill.rotation_degrees = Vector3(-90, 0, 0)
 
 
 func _setup_hud() -> void:
