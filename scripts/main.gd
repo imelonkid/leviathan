@@ -65,6 +65,13 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 
+## 掉进深渊：回到最近站稳的位置
+func _physics_process(_delta: float) -> void:
+	if player.global_position.y < maze.KILL_Y and not player.flying:
+		player.velocity = Vector3.ZERO
+		player.global_position = player.last_safe
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
@@ -82,6 +89,7 @@ func _spawn_player() -> void:
 	player.set_flying(false)
 	player.velocity = Vector3.ZERO
 	player.global_position = maze.get_spawn_position()
+	player.last_safe = player.global_position
 	# 出生时面朝迷宫中心
 	player.look_at(Vector3(0, player.global_position.y, 0), Vector3.UP)
 

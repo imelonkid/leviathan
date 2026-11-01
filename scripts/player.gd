@@ -10,6 +10,7 @@ const FLY_FAST_SPEED := 60.0
 
 var settings: Node               # 鼠标灵敏度从这里读，由 main 注入
 var flying := false
+var last_safe := Vector3.ZERO    # 最近一次站稳的位置，掉进深渊后回到这里
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var head: Node3D
@@ -48,6 +49,7 @@ func _ready() -> void:
 	cam.add_child(lamp)
 	lamp.position = Vector3(0.25, -0.2, 0)
 
+	floor_snap_length = 0.5          # 下楼梯时贴着坡面走，不会一蹦一蹦
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -103,6 +105,9 @@ func _physics_process(delta: float) -> void:
 	velocity.x = lerpf(velocity.x, dir.x * speed, accel * delta)
 	velocity.z = lerpf(velocity.z, dir.z * speed, accel * delta)
 	move_and_slide()
+
+	if is_on_floor():
+		last_safe = global_position
 
 	# 轻微的步伐晃动
 	var horizontal := Vector2(velocity.x, velocity.z).length()
