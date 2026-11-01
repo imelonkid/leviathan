@@ -10,9 +10,9 @@ const Menu = preload("res://scripts/menu.gd")
 const DebugHud = preload("res://scripts/debug_hud.gd")
 const Storm = preload("res://scripts/storm.gd")
 
-const LEVIATHAN_HEIGHT := 210.0
-const VANTAGE_HEIGHT := 70.0     # 开局悬停的高度：在外圈围墙外，远远望着利维坦和风暴
-const VANTAGE_OUT := 70.0        # 离迷宫外沿多远
+const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
+const VANTAGE_HEIGHT := 55.0     # 开局悬停的高度：在外圈围墙外，仰望利维坦和风暴
+const VANTAGE_OUT := 45.0        # 离迷宫外沿多远
 
 var settings: Node
 var env: Environment
@@ -105,7 +105,7 @@ func _spawn_player() -> void:
 	player.global_position = Vector3(0, VANTAGE_HEIGHT, half + VANTAGE_OUT)
 	player.last_safe = maze.get_spawn_position()
 	player.look_at(Vector3(0, VANTAGE_HEIGHT, 0), Vector3.UP)
-	player.head.rotation.x = deg_to_rad(26)
+	player.head.rotation.x = deg_to_rad(34)
 
 
 ## 截图存到 user://screenshots/，文件名带时间
@@ -136,7 +136,7 @@ func _setup_environment() -> void:
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.12, 0.14, 0.17)
 	env.fog_density = 0.0018     # 太浓会把远处的利维坦和整座迷宫洗成一片灰
-	env.fog_sky_affect = 0.25     # 天上的乌云要看得清
+	env.fog_sky_affect = 0.0      # 天上的乌云自己处理地平线的雾霭（sky.gdshader），不再叠一层雾
 
 	# 近处的体积雾：光束、提灯在雾里显形
 	env.volumetric_fog_enabled = true
