@@ -12,7 +12,8 @@ extends RefCounted
 ##   高层迷宫的外墙上开了几道门通向观景台，站在栏杆边能看见下面各层；
 ## - 每道挡土墙只开两段大楼梯，从低层最里一排爬进高层迷宫，与下一道的楼梯错开 90°；
 ## - 部分层里有深渊区：格子变成悬空平台，通道变成窄桥；
-## - 部分隔墙降成矮墙，能看见隔壁走道却过不去。
+## - 部分隔墙降成矮墙，能看见隔壁走道却过不去；
+## - 部分通道上方架着拱门（通向观景台的门一律是拱门）。
 
 enum { WALL, FLOOR, STAIR, BRIDGE, PLATFORM, VOID, PARAPET, TERRACE }
 
@@ -28,13 +29,15 @@ const WALL_MAX := 11.0
 const OUTER_WALL_H := 18.0             # 最外圈围墙
 const PARAPET_H := 1.4                 # 矮墙高出地面的高度，跳不过去（跳跃高度约 1.28 米）
 const CHASM_COUNT := 2
+const ARCH_CHANCE := 0.3               # 普通通道架拱门的概率
 
 var cells := 25
 var n := 0
 var kind: Array = []              # kind[z][x]：上面的枚举
 var height: Array = []            # height[z][x]：开放块的地面高度（米）；楼梯记低端
 var link: Array = []              # link[z][x]：楼梯 / 桥的走向（Vector2i），楼梯指向上坡
-var wall_top: Array = []          # wall_top[z][x]：墙、矮墙、挡土墙顶部的绝对高度（米）
+var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对高度（米）
+var arch: Array = []              # arch[z][x]：这条通道上方有拱门
 var chasms: Array[Rect2i] = []    # 深渊区，以格子为单位
 var stairs: Array[Vector2i] = []  # 每段大楼梯最低一块的位置，调试和测试用
 var rng := RandomNumberGenerator.new()
@@ -47,6 +50,7 @@ func generate(seed_value: int) -> void:
 	height = _grid(0.0)
 	link = _grid(Vector2i.ZERO)
 	wall_top = _grid(0.0)
+	arch = _grid(false)
 	chasms.clear()
 	stairs.clear()
 
@@ -60,6 +64,7 @@ func generate(seed_value: int) -> void:
 	_make_chasms()
 	_make_parapets()
 	_assign_wall_heights()
+	_make_arches()
 
 
 ## 格子到中心的距离（切比雪夫距离，按格子计）
@@ -327,3 +332,21 @@ func _assign_wall_heights() -> void:
 			var h := OUTER_WALL_H if border else rng.randf_range(WALL_MIN, WALL_MAX)
 			for i in range(start, x):
 				wall_top[z][i] = base + h
+
+
+## 拱门：只架在两侧都是墙角的平地通道上（这样拱的两脚有墙可靠）
+func _make_arches() -> void:
+	for z in range(1, n - 1):
+		for x in range(1, n - 1):
+			if kind[z][x] != FLOOR or (x % 2 == 0) == (z % 2 == 0):
+				continue
+			if block_dist(x, z) < BANDS[0] * 2:
+				continue
+			var across := Vector2i(0, 1) if x % 2 == 0 else Vector2i(1, 0)
+			if kind[z - across.y][x - across.x] != WALL or kind[z + across.y][x + across.x] != WALL:
+				continue
+			var along := Vector2i(across.y, across.x)
+			var to_terrace: bool = kind[z - along.y][x - along.x] == TERRACE \
+				or kind[z + along.y][x + along.x] == TERRACE
+			if to_terrace or rng.randf() < ARCH_CHANCE:
+				arch[z][x] = true

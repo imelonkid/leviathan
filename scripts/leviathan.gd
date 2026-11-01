@@ -43,6 +43,7 @@ func _build_body() -> void:
 	mat.emission = Color(0.35, 0.4, 0.5)
 	mat.emission_energy_multiplier = 0.3
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.disable_fog = true   # 远景雾会把本体洗成一团灰，只保留体积雾的朦胧感
 	body.material_override = mat
 	tilt.add_child(body)
 
@@ -52,6 +53,7 @@ func _build_body() -> void:
 	var emat := StandardMaterial3D.new()
 	emat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	emat.albedo_color = Color(0.85, 0.92, 1.0)
+	emat.disable_fog = true
 	edges.material_override = emat
 	edges.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	tilt.add_child(edges)

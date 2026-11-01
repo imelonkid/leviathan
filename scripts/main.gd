@@ -9,7 +9,7 @@ const Settings = preload("res://scripts/settings.gd")
 const Menu = preload("res://scripts/menu.gd")
 const DebugHud = preload("res://scripts/debug_hud.gd")
 
-const LEVIATHAN_HEIGHT := 170.0
+const LEVIATHAN_HEIGHT := 150.0
 
 var settings: Node
 var maze: Node3D
@@ -90,8 +90,9 @@ func _spawn_player() -> void:
 	player.velocity = Vector3.ZERO
 	player.global_position = maze.get_spawn_position()
 	player.last_safe = player.global_position
-	# 出生时面朝迷宫中心
+	# 出生时面朝迷宫中心、抬头看利维坦
 	player.look_at(Vector3(0, player.global_position.y, 0), Vector3.UP)
+	player.head.rotation.x = deg_to_rad(58)
 
 
 ## 截图存到 user://screenshots/，文件名带时间
@@ -109,10 +110,10 @@ func _setup_environment() -> void:
 	env.background_color = Color(0.015, 0.018, 0.022)
 
 	# 主光照不进 5 米宽的走道，走道里全靠环境光；颜色按 sRGB 转线性后很暗，
-	# 再经 ACES 和对比度压暗部，强度要给到 5 左右墙面才不会被压成纯黑
+	# 再经 ACES 和对比度压暗部。石材是浅色的（stone.gdshader），2 左右走道就看得清又不至于像白天
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.3, 0.34, 0.4)
-	env.ambient_light_energy = 5.0
+	env.ambient_light_energy = 2.0
 
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.1

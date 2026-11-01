@@ -1,9 +1,11 @@
 extends Node3D
-## 把 maze_gen.gd 生成的网格数据搭成场景：墙、挡土墙、地面、楼梯、平台、窄桥，
+## 把 maze_gen.gd 生成的网格数据搭成场景：墙、观景台、地面、楼梯、平台、窄桥、拱门、拱窗，
 ## 再在围墙外铺一圈走不到的迷宫，一直延伸进雾里。
-## 所有方块按材质合进几个 MultiMesh（各一次绘制），碰撞是一个静态体下挂多个盒子。
+## 同一种几何合进一个 MultiMesh（各一次绘制），碰撞是一个静态体下挂多个盒子。
 
 const MazeGen = preload("res://scripts/maze_gen.gd")
+const ArchMesh = preload("res://scripts/arch_mesh.gd")
+const StoneShader = preload("res://scripts/stone.gdshader")
 
 const BOTTOM := -60.0            # 墙和地面柱一直延伸到这里，深渊底下是雾
 const KILL_Y := -25.0            # 掉到这个高度以下就重生
@@ -15,6 +17,14 @@ const PLATFORM_W := 3.4
 const RAIL_T := 0.35             # 观景台栏杆：看起来齐腰高，碰撞做高一些，跳不过去
 const RAIL_H := 1.0
 const RAIL_BLOCK_H := 2.4
+const GATE_R := 1.7              # 拱门：门洞半宽、起拱高度、拱门这段墙的高度和厚度
+const GATE_SPRING := 3.2
+const GATE_H := 6.0
+const GATE_D := 1.0
+const WINDOW_R := 0.75           # 盲拱窗：窗洞半宽、起拱高度、一层的高度
+const WINDOW_SPRING := 1.9
+const WINDOW_STOREY := 4.2
+const WINDOW_CHANCE := 0.55      # 一面墙开拱窗的概率（开就整面墙每层都开）
 
 @export var cells := 25          # 每边的格子数
 @export var block := 5.0         # 一个网格块的边长（米），走道和墙同宽
@@ -22,11 +32,16 @@ const RAIL_BLOCK_H := 2.4
 
 var gen: RefCounted              # MazeGen：网格数据，小地图也读它
 var n := 0
-var wall_mat: StandardMaterial3D
-var floor_mat: StandardMaterial3D
+var wall_mat: ShaderMaterial
+var floor_mat: ShaderMaterial
+var hole_mat: StandardMaterial3D
+var gate_mesh: ArrayMesh
+var window_mesh: ArrayMesh
 var wall_boxes: Array[Transform3D] = []
 var floor_boxes: Array[Transform3D] = []
 var field_boxes: Array[Transform3D] = []
+var gates: Array[Transform3D] = []
+var windows: Array[Transform3D] = []
 var body: StaticBody3D
 
 
@@ -44,6 +59,8 @@ func build() -> void:
 	wall_boxes.clear()
 	floor_boxes.clear()
 	field_boxes.clear()
+	gates.clear()
+	windows.clear()
 
 	body = StaticBody3D.new()
 	add_child(body)
@@ -59,16 +76,21 @@ func build() -> void:
 					_build_bridge(x, z)
 				MazeGen.PLATFORM:
 					_build_platform(x, z)
+	_build_gates()
+	_build_windows()
 	_build_plaza_monoliths()
 	_build_outer_field()
 	_commit(wall_boxes, wall_mat)
 	_commit(floor_boxes, floor_mat)
 	_commit(field_boxes, wall_mat, false)
+	_commit_mesh(gates, gate_mesh)
+	_commit_mesh(windows, window_mesh)
 
 
-## 出生点：左下角第一个格子
+## 出生点：顶层广场南侧靠边（x 偏一格，楼梯口只会在偶数偏移上），利维坦就在头顶
 func get_spawn_position() -> Vector3:
-	return _block_to_world(1, 1) + Vector3(0, gen.floor_height(1, 1) + 0.2, 0)
+	var c := n / 2
+	return _block_to_world(c + 1, c + 3) + Vector3(0, gen.floor_height(c + 1, c + 3) + 0.2, 0)
 
 
 func _block_to_world(x: int, z: int) -> Vector3:
@@ -83,48 +105,23 @@ func world_to_block(p: Vector3) -> Vector2:
 
 
 func _make_materials() -> void:
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_CELLULAR
-	noise.frequency = 0.02
-	noise.fractal_octaves = 3
+	wall_mat = ShaderMaterial.new()
+	wall_mat.shader = StoneShader
 
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0.07, 0.075, 0.08))
-	ramp.set_color(1, Color(0.3, 0.31, 0.32))
+	floor_mat = ShaderMaterial.new()
+	floor_mat.shader = StoneShader
+	floor_mat.set_shader_parameter("stone_color", Color(0.5, 0.49, 0.46))
+	floor_mat.set_shader_parameter("grime", 0.25)
 
-	var albedo := NoiseTexture2D.new()
-	albedo.width = 512
-	albedo.height = 512
-	albedo.seamless = true
-	albedo.noise = noise
-	albedo.color_ramp = ramp
+	hole_mat = StandardMaterial3D.new()
+	hole_mat.albedo_color = Color(0.015, 0.016, 0.018)
+	hole_mat.roughness = 1.0
 
-	var normal := NoiseTexture2D.new()
-	normal.width = 512
-	normal.height = 512
-	normal.seamless = true
-	normal.as_normal_map = true
-	normal.bump_strength = 8.0
-	normal.noise = noise
-
-	wall_mat = StandardMaterial3D.new()
-	wall_mat.albedo_texture = albedo
-	wall_mat.normal_enabled = true
-	wall_mat.normal_texture = normal
-	wall_mat.roughness = 0.92
-	wall_mat.uv1_triplanar = true
-	wall_mat.uv1_world_triplanar = true   # 方块是缩放过的实例，按世界坐标贴图才不会拉伸
-	wall_mat.uv1_scale = Vector3(0.08, 0.08, 0.08)
-
-	floor_mat = StandardMaterial3D.new()
-	floor_mat.albedo_texture = albedo
-	floor_mat.albedo_color = Color(0.6, 0.62, 0.65)
-	floor_mat.normal_enabled = true
-	floor_mat.normal_texture = normal
-	floor_mat.roughness = 0.55   # 略带潮湿反光
-	floor_mat.uv1_triplanar = true
-	floor_mat.uv1_world_triplanar = true
-	floor_mat.uv1_scale = Vector3(0.12, 0.12, 0.12)
+	gate_mesh = ArchMesh.gate(block / 2.0, GATE_H, GATE_D, GATE_R, GATE_SPRING)
+	gate_mesh.surface_set_material(0, wall_mat)
+	window_mesh = ArchMesh.window(WINDOW_R, WINDOW_SPRING, 0.28, 0.18)
+	window_mesh.surface_set_material(0, wall_mat)
+	window_mesh.surface_set_material(1, hole_mat)
 
 
 ## 加一个方块：list 决定材质；rot 用于斜放的楼梯坡道和斜桥
@@ -284,6 +281,56 @@ func _build_platform(x: int, z: int) -> void:
 		_add_box(floor_boxes, c, size)
 
 
+## 拱门：通道上方横一段墙，下面开拱形门洞；拱门以上一直补到两侧墙顶。
+## 门墩站在走道里，要有碰撞；拱顶在头顶上方，不用碰撞
+func _build_gates() -> void:
+	for z in n:
+		for x in n:
+			if not gen.arch[z][x]:
+				continue
+			var h: float = gen.height[z][x]
+			var center := _block_to_world(x, z) + Vector3(0, h, 0)
+			# 门洞朝通道方向；局部 x 横跨走道，局部 z 是拱门厚度（顺着通道）
+			var along_x := x % 2 == 0
+			var rot := Basis(Vector3(0, 0, 1), Vector3.UP, Vector3(-1, 0, 0)) if along_x else Basis.IDENTITY
+			gates.append(Transform3D(rot, center))
+			var pier := block / 2.0 - GATE_R
+			for side: float in [-1.0, 1.0]:
+				var off := rot.x * side * (block / 2.0 - pier / 2.0)
+				_add_collider(center + off + Vector3(0, GATE_SPRING / 2.0, 0), Vector3(pier, GATE_SPRING, GATE_D), rot)
+			var across := Vector2i(0, 1) if along_x else Vector2i(1, 0)
+			var top := minf(gen.wall_top[z - across.y][x - across.x], gen.wall_top[z + across.y][x + across.x])
+			if top > h + GATE_H:
+				var fill := top - h - GATE_H
+				var size := rot * Vector3(block, fill, GATE_D)
+				_add_box(wall_boxes, center + Vector3(0, GATE_H + fill / 2.0, 0), size.abs(), Basis.IDENTITY, false)
+
+
+## 盲拱窗：朝着平地的墙面上，按层开一排拱窗；同一面墙要开就每层都开，看起来像一栋楼的立面
+func _build_windows() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_value + 2
+	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	for z in range(1, n - 1):
+		for x in range(1, n - 1):
+			if gen.kind[z][x] != MazeGen.WALL:
+				continue
+			var top: float = gen.wall_top[z][x]
+			for d in dirs:
+				var nk: int = gen.kind[z + d.y][x + d.x]
+				if nk != MazeGen.FLOOR and nk != MazeGen.TERRACE:
+					continue
+				if gen.arch[z + d.y][x + d.x] or r.randf() > WINDOW_CHANCE:
+					continue
+				var f := Vector3(d.x, 0, d.y)
+				var rot := Basis(Vector3.UP.cross(f), Vector3.UP, f)
+				var face := _block_to_world(x, z) + f * (block / 2.0)
+				var y: float = gen.height[z + d.y][x + d.x] + 1.0
+				while y + WINDOW_SPRING + WINDOW_R + 0.6 < top:
+					windows.append(Transform3D(rot, face + Vector3(0, y, 0)))
+					y += WINDOW_STOREY
+
+
 ## 顶层广场四角的方尖柱，给中心一点仪式感
 func _build_plaza_monoliths() -> void:
 	var c := n / 2
@@ -328,6 +375,19 @@ func _build_outer_field() -> void:
 	for t: Array in [[Vector3(0, 0, mid), Vector3(full, 1, w)], [Vector3(0, 0, -mid), Vector3(full, 1, w)],
 			[Vector3(mid, 0, 0), Vector3(w, 1, inner * 2.0)], [Vector3(-mid, 0, 0), Vector3(w, 1, inner * 2.0)]]:
 		field_boxes.append(Transform3D(Basis.from_scale(t[1]), t[0] + Vector3(0, -0.5, 0)))
+
+
+## 带自身材质的网格（拱门、拱窗）成批摆放
+func _commit_mesh(list: Array[Transform3D], mesh: Mesh) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = list.size()
+	for i in list.size():
+		mm.set_instance_transform(i, list[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
 
 
 func _commit(list: Array[Transform3D], mat: Material, shadows := true) -> void:

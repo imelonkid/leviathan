@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 调试信息（F3）与俯视小地图（M）。都默认关闭，不影响沉浸感。
+## 调试信息（F3，默认关闭）与俯视小地图（M，默认显示，迷宫太大，没有它完全没头绪）。
 
 var maze: Node3D
 var player: CharacterBody3D
@@ -19,7 +19,7 @@ func _ready() -> void:
 
 	minimap = Minimap.new()
 	minimap.hud = self
-	minimap.visible = false
+	minimap.visible = true
 	add_child(minimap)
 
 
