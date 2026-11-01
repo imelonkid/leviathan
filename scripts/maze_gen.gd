@@ -40,6 +40,7 @@ var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对
 var arch: Array = []              # arch[z][x]：这条通道上方有拱门
 var chasms: Array[Rect2i] = []    # 深渊区，以格子为单位
 var stairs: Array[Vector2i] = []  # 每段大楼梯最低一块的位置，调试和测试用
+var spawn := Vector2i(1, 1)       # 出生点所在的块
 var rng := RandomNumberGenerator.new()
 
 
@@ -65,6 +66,7 @@ func generate(seed_value: int) -> void:
 	_make_parapets()
 	_assign_wall_heights()
 	_make_arches()
+	_pick_spawn()
 
 
 ## 格子到中心的距离（切比雪夫距离，按格子计）
@@ -350,3 +352,43 @@ func _make_arches() -> void:
 				or kind[z + along.y][x + along.x] == TERRACE
 			if to_terrace or rng.randf() < ARCH_CHANCE:
 				arch[z][x] = true
+
+
+## 从 from 走到 to 要几步（按块计）；走不到返回 -1。
+## 相邻开放块的高差不超过一块楼梯的升高就能走过去
+func path_length(from: Vector2i, to: Vector2i) -> int:
+	var dist := {from: 0}
+	var queue: Array[Vector2i] = [from]
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_front()
+		if p == to:
+			return dist[p]
+		for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var q := p + d
+			if dist.has(q) or not is_open(q.x, q.y):
+				continue
+			if absf(floor_height(q.x, q.y) - floor_height(p.x, p.y)) > STAIR_RISE + 0.01:
+				continue
+			dist[q] = dist[p] + 1
+			queue.append(q)
+	return -1
+
+
+## 出生点：最外一道挡土墙顶的观景台，各边中点附近挑一个能走到顶层广场的
+## （观景台被楼梯槽截成几段，不是每段都有门通进迷宫）。
+## 出生点正对着的那块墙降成矮墙，像一扇观景窗：视线越过它，能看见远处的利维坦
+func _pick_spawn() -> void:
+	var center := Vector2i(n / 2, n / 2)
+	var db: int = BANDS[BANDS.size() - 1] * 2
+	for out: Vector2i in [Vector2i(0, 1), Vector2i(1, 0), Vector2i(0, -1), Vector2i(-1, 0)]:
+		var along := Vector2i(-out.y, out.x)
+		for k in [0, 2, -2, 4, -4, 6, -6]:
+			var p: Vector2i = center + out * db + along * k
+			var front: Vector2i = p - out
+			if kind[p.y][p.x] != TERRACE or arch[front.y][front.x] or path_length(p, center) < 0:
+				continue
+			if kind[front.y][front.x] == WALL:
+				kind[front.y][front.x] = PARAPET
+				wall_top[front.y][front.x] = height[p.y][p.x] + PARAPET_H
+			spawn = p
+			return

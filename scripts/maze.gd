@@ -5,7 +5,7 @@ extends Node3D
 
 const MazeGen = preload("res://scripts/maze_gen.gd")
 const ArchMesh = preload("res://scripts/arch_mesh.gd")
-const StoneShader = preload("res://scripts/stone.gdshader")
+const WallShader = preload("res://scripts/wall.gdshader")
 
 const BOTTOM := -60.0            # 墙和地面柱一直延伸到这里，深渊底下是雾
 const KILL_Y := -25.0            # 掉到这个高度以下就重生
@@ -87,10 +87,10 @@ func build() -> void:
 	_commit_mesh(windows, window_mesh)
 
 
-## 出生点：顶层广场南侧靠边（x 偏一格，楼梯口只会在偶数偏移上），利维坦就在头顶
+## 出生点：最外一圈观景台上（离中心约 100 米），远远望得见利维坦，要穿过两层迷宫才走到它下面
 func get_spawn_position() -> Vector3:
-	var c := n / 2
-	return _block_to_world(c + 1, c + 3) + Vector3(0, gen.floor_height(c + 1, c + 3) + 0.2, 0)
+	var b: Vector2i = gen.spawn
+	return _block_to_world(b.x, b.y) + Vector3(0, gen.floor_height(b.x, b.y) + 0.2, 0)
 
 
 func _block_to_world(x: int, z: int) -> Vector3:
@@ -105,13 +105,10 @@ func world_to_block(p: Vector3) -> Vector2:
 
 
 func _make_materials() -> void:
+	# 墙和地面用同一个着色器：竖直面是旧灰泥 / 土坯，朝上的面是踩实的土地
 	wall_mat = ShaderMaterial.new()
-	wall_mat.shader = StoneShader
-
-	floor_mat = ShaderMaterial.new()
-	floor_mat.shader = StoneShader
-	floor_mat.set_shader_parameter("stone_color", Color(0.5, 0.49, 0.46))
-	floor_mat.set_shader_parameter("grime", 0.25)
+	wall_mat.shader = WallShader
+	floor_mat = wall_mat
 
 	hole_mat = StandardMaterial3D.new()
 	hole_mat.albedo_color = Color(0.015, 0.016, 0.018)
