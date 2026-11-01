@@ -9,10 +9,9 @@ const HALF_HEIGHT := 170.0
 const BEAM_LEN := 420.0
 const BEAM_COUNT := 2
 const BEAM_DIP := 66.0           # 光束从水平往下的角度：从 250 米高空斜射，落地处离中心约 110 米，扫过迷宫各层
-const BEAM_CONES := [            # 每束由三层锥体叠成：[起点半径, 远端半径, 不透明度, 锐度]
+const BEAM_CONES := [            # 每束由两层锥体叠成：[起点半径, 远端半径, 不透明度, 锐度]
 	[2.5, 16.0, 1.0, 0.5],       # 实心的芯
 	[5.0, 34.0, 1.0, 1.4],       # 主体
-	[10.0, 75.0, 0.6, 1.0],      # 外面的暗晕
 ]
 const BEAM_SPEED := 0.12         # 光束旋转的角速度（弧度/秒），约 52 秒转一圈
 const BODY_LAYER := 2            # 本体单独放一个渲染层，专属主光只照它
@@ -87,8 +86,8 @@ func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 
 
 ## 黑光：从腰部射出两束，方向相反，以固定的俯角稳定旋转，像探照灯一样扫过迷宫。
-## 每束是一个越往外越宽的锥体：正中浓黑、边缘渐淡、远端消散，里面有往外流动的暗纹，
-## 外面再罩一层更宽更淡的暗晕——是“黑色的光”，不是黑棍子。
+## 每束是一个越往外越宽的锥体：正中浓黑、边缘渐淡、远端消散，里面有往外流动的暗纹
+## ——是“黑色的光”，不是黑棍子。
 ## （不再套黑色雾体：长圆柱在近处的体积雾里会切出生硬的黑边）
 func _build_beams() -> void:
 	beam_pivot = Node3D.new()
@@ -159,7 +158,7 @@ func _process(delta: float) -> void:
 	beam_pivot.rotate_y(delta * BEAM_SPEED)
 
 
-## 某一点被黑光照到的程度（0～1）：在光锥的芯里是 1，到暗晕外缘降到 0。
+## 某一点被黑光照到的程度（0～1）：在光锥中心是 1，到主体外缘降到 0。
 ## main 用它给镜头加“被黑光打中”的画面和声音
 func beam_exposure(p: Vector3) -> float:
 	var best := 0.0
@@ -172,7 +171,7 @@ func beam_exposure(p: Vector3) -> float:
 			continue
 		var k := along / BEAM_LEN
 		var radial := (v - dir * along).length()
-		var inner := lerpf(BEAM_CONES[1][0], BEAM_CONES[1][1], k) * 0.6
-		var outer := lerpf(BEAM_CONES[2][0], BEAM_CONES[2][1], k)
+		var outer := lerpf(BEAM_CONES[1][0], BEAM_CONES[1][1], k)
+		var inner := outer * 0.5
 		best = maxf(best, 1.0 - smoothstep(inner, outer, radial))
 	return best
