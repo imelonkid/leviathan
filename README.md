@@ -77,7 +77,7 @@ Esc 菜单里有低 / 中 / 高三档预设，也可以单独调整：
 - **被黑光扫中**：镜头进入光锥时，画面褪色、从四周往中间压黑、微微扭动、轻微抖动，同时响起一记低沉的压迫声；光束扫过后慢慢缓过来（`beam_fx.gd`）。
 - **风暴**：天空是光线步进的体积乌云（`sky.gdshader`），云顶亮、云底暗，背光的边缘透出亮边。利维坦腰部缠着一圈浓重的体积云（`cloud_ring.gdshader`），绕着它缓慢盘旋，挡在前面的云会遮住本体。每隔 5～14 秒一道闪电，劈向迷宫或在云间横窜，照亮云层和整个场景，一两秒后传来雷声。
 - **氛围**：冷色低角度平行光；远景指数雾让利维坦半隐半现；近景体积雾让光束和提灯显形；SSAO、辉光、降饱和。
-- **声音**：程序合成。持续的低频嗡鸣，周期性响起按摩斯电码 “GOD”（`--. --- -..`）节奏鸣响的号角。主总线挂了大空间混响。
+- **声音**：背景音乐 `assets/audio/liweitan.mp3`（36 秒循环，走单独的 Music 总线，音量在 Esc 菜单里调）。雷声和被黑光扫中时的低频压迫声是程序合成的（`drone.gd`），走带大空间混响的 Ambience 总线；被黑光扫中时音乐也会被压下去。
 
 ## 目录结构
 
@@ -86,6 +86,7 @@ leviathan/
 ├── project.godot        项目配置
 ├── export_presets.cfg   三个平台的导出配置
 ├── main.tscn            主场景（只有一个根节点，内容全部由脚本生成）
+├── assets/audio/        背景音乐
 ├── scripts/
 │   ├── main.gd          入口：环境、灯光、组装各模块、换种子、截图
 │   ├── maze_gen.gd      迷宫数据生成：分层、楼梯、观景台、深渊区、墙高（不碰节点）
@@ -99,7 +100,7 @@ leviathan/
 │   ├── sky.gdshader     光线步进的体积乌云
 │   ├── cloud_ring.gdshader  缠绕利维坦的体积云环
 │   ├── player.gd        第一人称控制器、提灯、飞行
-│   ├── drone.gd         程序化环境音、号角、雷声
+│   ├── drone.gd         程序化雷声、黑光压迫声（无背景音乐时还有嗡鸣与号角）
 │   ├── settings.gd      画质与操作设置，读写 settings.cfg
 │   ├── menu.gd          Esc 菜单
 │   └── debug_hud.gd     调试信息与小地图
@@ -145,7 +146,9 @@ leviathan/
 | 光束数量 / 摆幅 / 明灭节奏 | `leviathan.gd` → `BEAM_COUNT`、`_process()` |
 | 移动 / 飞行速度 | `player.gd` 顶部常量 |
 | 画质预设 | `settings.gd` → `PRESETS` |
-| 号角音高 / 节奏 | `drone.gd` → `HORN_FREQ` / `UNIT` |
+| 背景音乐 | 替换 `assets/audio/liweitan.mp3`，或改 `main.gd` 里的 `MUSIC` |
+| 背景音乐被黑光压低的程度 | `main.gd` → `_process()` 里的 `0.75` |
+| 号角音高 / 节奏（无背景音乐时） | `drone.gd` → `HORN_FREQ` / `UNIT` |
 
 ## 发布
 

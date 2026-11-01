@@ -1,6 +1,8 @@
 extends AudioStreamPlayer
 ## 程序化环境音：持续的低频嗡鸣 + 周期性的号角 + 闪电后的雷声（storm.gd 调用 thunder()）
 ## + 被黑光扫中时的低频压迫声（main 设置 pressure）。
+## 有背景音乐时（music = true）不再合成嗡鸣和号角，只留雷声和压迫声。
+## 合成的声音走单独的 Ambience 总线（带大空间混响），不影响音乐。
 ## 号角按摩斯电码拼出 "GOD"（--. --- -..），致敬原片配乐的彩蛋。
 
 const RATE := 11025.0
@@ -17,6 +19,7 @@ var brown := 0.0                 # 布朗噪声的状态：白噪声积分，低
 var rumble := 0.0
 var pressure := 0.0              # 被黑光照到的程度（0～1），main 每帧设置
 var pressure_s := 0.0            # 逐个采样平滑过的值，免得音量跳变出爆音
+var music := false               # 有背景音乐时关掉嗡鸣和号角，由 main 设置
 
 
 func _ready() -> void:
@@ -28,13 +31,19 @@ func _ready() -> void:
 	stream = gen
 	volume_db = -4.0
 
-	# 给主总线加一点大空间混响
-	var reverb := AudioEffectReverb.new()
-	reverb.room_size = 0.95
-	reverb.damping = 0.3
-	reverb.wet = 0.45
-	reverb.dry = 0.8
-	AudioServer.add_bus_effect(0, reverb)
+	# 自己的总线，挂大空间混响；不加在主总线上，免得把背景音乐也糊掉
+	if AudioServer.get_bus_index("Ambience") < 0:
+		AudioServer.add_bus()
+		var idx := AudioServer.bus_count - 1
+		AudioServer.set_bus_name(idx, "Ambience")
+		AudioServer.set_bus_send(idx, "Master")
+		var reverb := AudioEffectReverb.new()
+		reverb.room_size = 0.95
+		reverb.damping = 0.3
+		reverb.wet = 0.45
+		reverb.dry = 0.8
+		AudioServer.add_bus_effect(idx, reverb)
+	bus = "Ambience"
 
 	play()
 	playback = get_stream_playback() as AudioStreamGeneratorPlayback
@@ -108,6 +117,8 @@ func _sample() -> float:
 		press = (sin(TAU * 27.5 * t) * 0.6 + sin(TAU * 41.0 * t + sin(TAU * 0.5 * t)) * 0.3 + rumble * 2.0) \
 			* throb * pressure_s * 0.7
 
+	if music:
+		return clampf(boom + press, -1.0, 1.0)
 	return clampf(drone * 0.35 * (1.0 - pressure_s * 0.6) + horn + boom + press, -1.0, 1.0)
 
 

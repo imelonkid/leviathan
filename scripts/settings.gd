@@ -31,6 +31,7 @@ var values := {
 	"fullscreen": false,
 	"vsync": true,
 	"mouse_sens": 0.0025,
+	"music_volume": 0.8,
 }
 
 var env: Environment
@@ -83,6 +84,12 @@ func apply() -> void:
 		DisplayServer.window_set_mode(mode)
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if values["vsync"] else DisplayServer.VSYNC_DISABLED)
+
+	var music_bus := AudioServer.get_bus_index("Music")
+	if music_bus >= 0:
+		var v: float = values["music_volume"]
+		AudioServer.set_bus_volume_db(music_bus, linear_to_db(maxf(v, 0.0001)))
+		AudioServer.set_bus_mute(music_bus, v <= 0.001)
 
 	changed.emit()
 

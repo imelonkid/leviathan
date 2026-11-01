@@ -10,6 +10,7 @@ const Menu = preload("res://scripts/menu.gd")
 const DebugHud = preload("res://scripts/debug_hud.gd")
 const Storm = preload("res://scripts/storm.gd")
 const BeamFx = preload("res://scripts/beam_fx.gd")
+const MUSIC = preload("res://assets/audio/liweitan.mp3")   # 背景音乐，导入设置里已开循环
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
 const VANTAGE_HEIGHT := 55.0     # 开局悬停的高度：在外圈围墙外，仰望利维坦和风暴
@@ -20,6 +21,7 @@ var env: Environment
 var lev: Node3D
 var drone: Node
 var beam_fx: CanvasLayer
+var music: AudioStreamPlayer
 var maze: Node3D
 var player: CharacterBody3D
 
@@ -50,7 +52,10 @@ func _ready() -> void:
 
 	drone = Drone.new()
 	drone.name = "Drone"
+	drone.music = true
 	add_child(drone)
+
+	_setup_music()
 
 	var storm := Storm.new()
 	storm.name = "Storm"
@@ -84,11 +89,29 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 
-## 镜头被黑光扫中：画面压黑、声音压迫
+## 镜头被黑光扫中：画面压黑、声音压迫，音乐也被压下去
 func _process(_delta: float) -> void:
 	var e: float = lev.beam_exposure(player.cam.global_position)
 	beam_fx.intensity = e
 	drone.pressure = e
+	music.volume_db = linear_to_db(1.0 - beam_fx.level * 0.75)
+
+
+## 背景音乐走自己的 Music 总线，音量在 Esc 菜单里调
+func _setup_music() -> void:
+	if AudioServer.get_bus_index("Music") < 0:
+		AudioServer.add_bus()
+		var idx := AudioServer.bus_count - 1
+		AudioServer.set_bus_name(idx, "Music")
+		AudioServer.set_bus_send(idx, "Master")
+	music = AudioStreamPlayer.new()
+	music.name = "Music"
+	var stream: AudioStreamMP3 = MUSIC
+	stream.loop = true           # 导入设置里也开了循环，这里再保证一次
+	music.stream = stream
+	music.bus = "Music"
+	add_child(music)
+	music.play()
 
 
 ## 掉进深渊：回到最近站稳的位置

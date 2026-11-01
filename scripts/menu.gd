@@ -50,6 +50,7 @@ func _ready() -> void:
 	_check(box, "fullscreen", "全屏")
 	_check(box, "vsync", "垂直同步")
 	_slider(box, "mouse_sens", "鼠标灵敏度", 0.0005, 0.006, 0.0001, "%.1f", 1000.0)
+	_slider(box, "music_volume", "音乐音量", 0.0, 1.0, 0.05, "%d%%", 100.0)
 	box.add_child(HSeparator.new())
 
 	var keys := Label.new()
