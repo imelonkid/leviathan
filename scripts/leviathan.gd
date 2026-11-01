@@ -1,9 +1,12 @@
 extends Node3D
-## 利维坦：拉长的菱形体，在迷宫上空缓慢旋转，间歇射出扫掠的"黑光"。
+## 利维坦：拉长的菱形体，旧黄铜表面刻满纹样（leviathan.gdshader），
+## 在迷宫上空缓慢旋转，间歇射出扫掠的"黑光"。
 
-const HALF_WIDTH := 16.0
-const HALF_HEIGHT := 70.0
-const BEAM_LEN := 280.0
+const BodyShader = preload("res://scripts/leviathan.gdshader")
+
+const HALF_WIDTH := 20.0
+const HALF_HEIGHT := 120.0
+const BEAM_LEN := 340.0
 const BEAM_COUNT := 3
 
 var spin: Node3D
@@ -16,13 +19,17 @@ func _ready() -> void:
 	_build_body()
 	_build_beams()
 
-	# 自身的冷光，让菱形在雾中能被看见
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.6, 0.7, 0.85)
-	glow.light_energy = 3.0
-	glow.omni_range = 120.0
-	glow.light_volumetric_fog_energy = 0.0
-	add_child(glow)
+	# 照亮本体的两盏灯，放在外面（放在中心会只照亮内侧）：
+	# 一侧偏暖的主光照出黄铜和刻纹，另一侧冷色的补光，像被云层反射的天光
+	for l: Array in [[Vector3(110, 60, 90), Color(1.0, 0.86, 0.66), 14.0], [Vector3(-100, -20, -110), Color(0.55, 0.65, 0.85), 6.0]]:
+		var light := OmniLight3D.new()
+		light.position = l[0]
+		light.light_color = l[1]
+		light.light_energy = l[2]
+		light.omni_range = 340.0
+		light.omni_attenuation = 0.6
+		light.light_volumetric_fog_energy = 0.0
+		add_child(light)
 
 
 func _build_body() -> void:
@@ -35,28 +42,12 @@ func _build_body() -> void:
 
 	var body := MeshInstance3D.new()
 	body.mesh = _make_diamond(HALF_WIDTH, HALF_HEIGHT)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.55, 0.57, 0.6)
-	mat.metallic = 0.7
-	mat.roughness = 0.3
-	mat.emission_enabled = true
-	mat.emission = Color(0.35, 0.4, 0.5)
-	mat.emission_energy_multiplier = 0.3
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.disable_fog = true   # 远景雾会把本体洗成一团灰，只保留体积雾的朦胧感
+	var mat := ShaderMaterial.new()
+	mat.shader = BodyShader
+	mat.set_shader_parameter("half_width", HALF_WIDTH)
+	mat.set_shader_parameter("half_height", HALF_HEIGHT)
 	body.material_override = mat
 	tilt.add_child(body)
-
-	# 发光的棱线
-	var edges := MeshInstance3D.new()
-	edges.mesh = _make_edges(HALF_WIDTH * 1.01, HALF_HEIGHT * 1.01)
-	var emat := StandardMaterial3D.new()
-	emat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	emat.albedo_color = Color(0.85, 0.92, 1.0)
-	emat.disable_fog = true
-	edges.material_override = emat
-	edges.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	tilt.add_child(edges)
 
 
 func _diamond_points(w: float, h: float) -> Array[Vector3]:
@@ -90,18 +81,6 @@ func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	for v: Vector3 in [a, b, c]:
 		st.set_normal(nrm)
 		st.add_vertex(v)
-
-
-func _make_edges(w: float, h: float) -> ArrayMesh:
-	var p := _diamond_points(w, h)
-	var pairs := [[0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [1, 3], [1, 4], [1, 5],
-		[2, 3], [3, 4], [4, 5], [5, 2]]
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_LINES)
-	for pair: Array in pairs:
-		st.add_vertex(p[pair[0]])
-		st.add_vertex(p[pair[1]])
-	return st.commit()
 
 
 func _build_beams() -> void:

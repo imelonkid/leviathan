@@ -1,5 +1,5 @@
 extends AudioStreamPlayer
-## 程序化环境音：持续的低频嗡鸣 + 周期性的号角。
+## 程序化环境音：持续的低频嗡鸣 + 周期性的号角 + 闪电后的雷声（storm.gd 调用 thunder()）。
 ## 号角按摩斯电码拼出 "GOD"（--. --- -..），致敬原片配乐的彩蛋。
 
 const RATE := 11025.0
@@ -10,6 +10,10 @@ var playback: AudioStreamGeneratorPlayback
 var t := 0.0
 var pattern: Array = []       # [[开始, 结束], ...]
 var cycle := 0.0
+var thunder_at := -1.0           # 雷声开始的时刻（音频时间）；< 0 表示没有
+var thunder_gain := 0.0
+var brown := 0.0                 # 布朗噪声的状态：白噪声积分，低沉的轰隆声
+var rumble := 0.0
 
 
 func _ready() -> void:
@@ -39,6 +43,12 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		stop()
 		playback = null
+
+
+## 预约一声雷：delay 秒后开始，strength 0～1.2
+func thunder(delay: float, strength: float) -> void:
+	thunder_at = t + delay
+	thunder_gain = strength
 
 
 func _build_pattern() -> void:
@@ -75,7 +85,19 @@ func _sample() -> float:
 			horn += sin(TAU * HORN_FREQ * h * t * (1.0 + 0.002 * h)) / h
 		horn *= env * 0.45
 
-	return clampf(drone * 0.35 + horn, -1.0, 1.0)
+	var boom := 0.0
+	if thunder_at >= 0.0 and t >= thunder_at:
+		var k := t - thunder_at
+		if k > 6.0:
+			thunder_at = -1.0
+		else:
+			# 先一声炸响，再拖出几秒忽强忽弱的滚雷
+			brown = (brown + randf_range(-1.0, 1.0) * 0.06) * 0.995
+			rumble = lerpf(rumble, brown, 0.08)
+			var swell := (1.0 - exp(-k * 25.0)) * exp(-k * 0.7) * (0.7 + 0.3 * sin(k * 5.3) * sin(k * 2.1))
+			boom = rumble * swell * thunder_gain * 2.2
+
+	return clampf(drone * 0.35 + horn + boom, -1.0, 1.0)
 
 
 func _horn_env(x: float) -> float:

@@ -8,10 +8,14 @@ const Drone = preload("res://scripts/drone.gd")
 const Settings = preload("res://scripts/settings.gd")
 const Menu = preload("res://scripts/menu.gd")
 const DebugHud = preload("res://scripts/debug_hud.gd")
+const Storm = preload("res://scripts/storm.gd")
 
-const LEVIATHAN_HEIGHT := 150.0
+const LEVIATHAN_HEIGHT := 210.0
+const VANTAGE_HEIGHT := 70.0     # 开局悬停的高度：在外圈围墙外，远远望着利维坦和风暴
+const VANTAGE_OUT := 70.0        # 离迷宫外沿多远
 
 var settings: Node
+var env: Environment
 var maze: Node3D
 var player: CharacterBody3D
 
@@ -43,6 +47,13 @@ func _ready() -> void:
 	var drone := Drone.new()
 	drone.name = "Drone"
 	add_child(drone)
+
+	var storm := Storm.new()
+	storm.name = "Storm"
+	storm.env = env
+	storm.drone = drone
+	storm.center = lev.position
+	add_child(storm)
 
 	_setup_hud()
 
@@ -85,14 +96,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_screenshot()
 
 
+## 开局悬停在迷宫外的半空中，正对利维坦和风暴，整座地狱尽收眼底；按 V 落地。
+## 落地点（以及掉出迷宫后的重生点）是最外一圈观景台
 func _spawn_player() -> void:
-	player.set_flying(false)
+	player.set_flying(true)
 	player.velocity = Vector3.ZERO
-	player.global_position = maze.get_spawn_position()
-	player.last_safe = player.global_position
-	# 出生时面朝迷宫中心，微微抬头就能看见远处的利维坦
-	player.look_at(Vector3(0, player.global_position.y, 0), Vector3.UP)
-	player.head.rotation.x = deg_to_rad(22)
+	var half: float = maze.n * maze.block / 2.0
+	player.global_position = Vector3(0, VANTAGE_HEIGHT, half + VANTAGE_OUT)
+	player.last_safe = maze.get_spawn_position()
+	player.look_at(Vector3(0, VANTAGE_HEIGHT, 0), Vector3.UP)
+	player.head.rotation.x = deg_to_rad(26)
 
 
 ## 截图存到 user://screenshots/，文件名带时间
@@ -104,8 +117,9 @@ func _screenshot() -> void:
 	print("截图已保存：", ProjectSettings.globalize_path(path))
 
 
+## 天空在 storm.gd 里换成风暴云（BG_SKY）
 func _setup_environment() -> void:
-	var env := Environment.new()
+	env = Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.015, 0.018, 0.022)
 
@@ -121,8 +135,8 @@ func _setup_environment() -> void:
 	# 远处的整体雾：让利维坦成为半隐半现的剪影
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.12, 0.14, 0.17)
-	env.fog_density = 0.0035
-	env.fog_sky_affect = 0.6
+	env.fog_density = 0.0018     # 太浓会把远处的利维坦和整座迷宫洗成一片灰
+	env.fog_sky_affect = 0.25     # 天上的乌云要看得清
 
 	# 近处的体积雾：光束、提灯在雾里显形
 	env.volumetric_fog_enabled = true
@@ -176,11 +190,11 @@ func _setup_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var label := Label.new()
-	label.text = "WASD 移动 · Shift 奔跑 · 空格 跳跃 · F 提灯 · Esc 菜单与设置"
+	label.text = "V 飞行 / 落地 · WASD 移动 · 空格 / Ctrl 升降 · Shift 加速 · F 提灯 · M 地图 · Esc 菜单"
 	label.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85, 0.85))
 	label.add_theme_font_size_override("font_size", 18)
 	label.position = Vector2(24, 20)
 	layer.add_child(label)
 	var tw := create_tween()
-	tw.tween_interval(8.0)
+	tw.tween_interval(14.0)
 	tw.tween_property(label, "modulate:a", 0.0, 3.0)

@@ -53,8 +53,8 @@ func _ready() -> void:
 	box.add_child(HSeparator.new())
 
 	var keys := Label.new()
-	keys.text = "WASD 移动 · Shift 奔跑 · 空格 跳跃 · F 提灯\n" \
-		+ "V 飞行 · R 换一座迷宫 · M 小地图 · F3 调试信息 · F12 截图"
+	keys.text = "WASD 移动 · Shift 奔跑 · 空格 跳跃 · F 提灯 · M 小地图\n" \
+		+ "V 飞行 / 落地（空格上升、Ctrl 下降）· R 换一座迷宫 · F3 调试信息 · F12 截图"
 	keys.add_theme_color_override("font_color", Color(0.6, 0.65, 0.7))
 	keys.add_theme_font_size_override("font_size", 14)
 	box.add_child(keys)
