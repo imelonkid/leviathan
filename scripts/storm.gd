@@ -13,11 +13,23 @@ const FLICKER_STEP := 0.08
 const RING_OUTER := 380.0        # 云环包围盒的半宽、半高、中心相对利维坦往上偏多少（米）
 const RING_HALF_H := 180.0
 const RING_Y_BIAS := 30.0
+## 乌云质量（settings 的 clouds：0 低 / 1 中 / 2 高）：天空步进次数、每步朝亮处探几次、
+## 是否在半分辨率里步进、云环步进次数（0 = 不画云环）
+const CLOUD_QUALITY := [
+	{"steps": 32, "light": 1, "half": true, "ring": 0},
+	{"steps": 40, "light": 2, "half": true, "ring": 24},
+	{"steps": 48, "light": 3, "half": false, "ring": 40},
+]
 
 var env: Environment             # main 注入
 var drone: Node                  # main 注入，用来打雷
+var settings: Node               # main 注入，乌云质量跟着画质走
 var center := Vector3.ZERO       # 利维坦的位置，闪电围着它
 var rng := RandomNumberGenerator.new()
+var sky_mat: ShaderMaterial
+var sky_half: Shader             # 半分辨率版的天空着色器
+var ring: MeshInstance3D
+var ring_mat: ShaderMaterial
 var flash_light: DirectionalLight3D
 var bolt: MeshInstance3D
 var bolt_mat: ShaderMaterial
@@ -55,12 +67,19 @@ void fragment() {
 	bolt.visible = false
 	add_child(bolt)
 
+	if settings:
+		settings.changed.connect(_apply_quality)
+	_apply_quality()
+
 
 func _build_sky() -> void:
-	var mat := ShaderMaterial.new()
-	mat.shader = SkyShader
+	sky_mat = ShaderMaterial.new()
+	sky_mat.shader = SkyShader
+	sky_half = Shader.new()
+	sky_half.code = SkyShader.code.replace("shader_type sky;",
+		"shader_type sky;\nrender_mode use_half_res_pass;\n#define HALF_RES")
 	var sky := Sky.new()
-	sky.sky_material = mat
+	sky.sky_material = sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY
@@ -68,20 +87,31 @@ func _build_sky() -> void:
 
 ## 云环：一个包住利维坦周围的盒子，着色器在里面做体积云（盒子只是给它一块画布）
 func _build_cloud_ring() -> void:
-	var mat := ShaderMaterial.new()
-	mat.shader = CloudRingShader
-	mat.set_shader_parameter("center", center)
-	mat.set_shader_parameter("r_outer", RING_OUTER)
-	mat.set_shader_parameter("half_h", RING_HALF_H)
-	mat.set_shader_parameter("y_bias", RING_Y_BIAS)
+	ring_mat = ShaderMaterial.new()
+	ring_mat.shader = CloudRingShader
+	ring_mat.set_shader_parameter("center", center)
+	ring_mat.set_shader_parameter("r_outer", RING_OUTER)
+	ring_mat.set_shader_parameter("half_h", RING_HALF_H)
+	ring_mat.set_shader_parameter("y_bias", RING_Y_BIAS)
 	var box := BoxMesh.new()
 	box.size = Vector3(RING_OUTER * 2.0, RING_HALF_H * 2.0, RING_OUTER * 2.0)
-	var mi := MeshInstance3D.new()
-	mi.mesh = box
-	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.position = center + Vector3(0, RING_Y_BIAS, 0)
-	add_child(mi)
+	ring = MeshInstance3D.new()
+	ring.mesh = box
+	ring.material_override = ring_mat
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.position = center + Vector3(0, RING_Y_BIAS, 0)
+	add_child(ring)
+
+
+func _apply_quality() -> void:
+	var q: Dictionary = CLOUD_QUALITY[clampi(settings.get_value("clouds") if settings else 2, 0, 2)]
+	var shader: Shader = sky_half if q["half"] else SkyShader
+	if sky_mat.shader != shader:
+		sky_mat.shader = shader
+	sky_mat.set_shader_parameter("steps", q["steps"])
+	sky_mat.set_shader_parameter("light_steps", q["light"])
+	ring.visible = q["ring"] > 0
+	ring_mat.set_shader_parameter("steps", maxi(q["ring"], 1))
 
 
 func _process(delta: float) -> void:
