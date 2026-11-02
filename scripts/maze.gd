@@ -7,6 +7,7 @@ const MazeGen = preload("res://scripts/maze_gen.gd")
 const ArchMesh = preload("res://scripts/arch_mesh.gd")
 const WallShader = preload("res://scripts/wall.gdshader")
 const InteriorShader = preload("res://scripts/interior.gdshader")
+const TrimKit = preload("res://assets/models/trim_kit.glb")   # 建筑装饰件，tools/blender/trim_kit.py 生成
 const Room = preload("res://scripts/rooms/room.gd")
 const ROOM_NEAR := 30.0          # 走到离房间中心这么近才把屋里搭出来
 const ROOM_FAR := 60.0           # 走远到这么远再拆掉
@@ -50,6 +51,10 @@ var n := 0
 var wall_mat: ShaderMaterial
 var floor_mat: ShaderMaterial
 var window_mat: ShaderMaterial
+var trim_mat: ShaderMaterial
+var trim_meshes := {}            # 装饰件名 → 网格（来自 trim_kit.glb）
+var trims := {}                  # 装饰件名 → 这一件的所有摆放位置
+var window_faces := {}           # 开了拱窗的墙面：Vector4i(x, z, dx, dz)，壁柱避开它们
 var gate_mesh: ArrayMesh
 var window_mesh: ArrayMesh
 var arcade_mesh: ArrayMesh
@@ -85,6 +90,9 @@ func build() -> void:
 	windows.clear()
 	arcades.clear()
 	doorways.clear()
+	window_faces.clear()
+	for k: String in trim_meshes:
+		trims[k] = [] as Array[Transform3D]
 	room_nodes.clear()
 	room_visits.clear()
 
@@ -108,6 +116,7 @@ func build() -> void:
 	_build_doorways()
 	_build_arcades()
 	_build_windows()
+	_build_trim()
 	_build_plaza_monoliths()
 	_build_rooms()
 	_build_outer_field()
@@ -118,6 +127,8 @@ func build() -> void:
 	_commit_mesh(arcades, arcade_mesh)
 	_commit_mesh(doorways, doorway_mesh)
 	_commit_mesh(windows, window_mesh)
+	for k: String in trims:
+		_commit_mesh(trims[k], trim_meshes[k])
 
 
 ## 出生点：最外一圈观景台上（离中心约 100 米），远远望得见利维坦，要穿过两层迷宫才走到它下面
@@ -142,6 +153,18 @@ func _make_materials() -> void:
 	wall_mat = ShaderMaterial.new()
 	wall_mat.shader = WallShader
 	floor_mat = wall_mat
+	# 装饰件：同一个墙面着色器，灰泥浅一点、不怎么剥落，看上去是另砌的石头线脚
+	trim_mat = ShaderMaterial.new()
+	trim_mat.shader = WallShader
+	trim_mat.set_shader_parameter("plaster_color", Color(0.56, 0.52, 0.46))
+	trim_mat.set_shader_parameter("peel", 0.08)
+	trim_mat.set_shader_parameter("crack", 0.35)
+	var kit: Node = TrimKit.instantiate()
+	for c in kit.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (c as MeshInstance3D).mesh
+		mesh.surface_set_material(0, trim_mat)
+		trim_meshes[String(c.name)] = mesh
+	kit.free()
 
 
 	gate_mesh = ArchMesh.gate(block / 2.0, GATE_H, GATE_D, GATE_R, GATE_SPRING)
@@ -231,6 +254,7 @@ func _build_spans() -> void:
 			for end: float in [-1.0, 1.0]:
 				var c := center + run * end * (block - GATE_D) / 2.0
 				gates.append(Transform3D(rot, c))
+				_add_voussoirs(rot, c, GATE_D)
 				for side: float in [-1.0, 1.0]:
 					var off := rot.x * side * (block / 2.0 - pier / 2.0)
 					_add_collider(c + off + Vector3(0, GATE_SPRING / 2.0, 0), Vector3(pier, GATE_SPRING, GATE_D), rot)
@@ -370,6 +394,102 @@ func _build_platform(x: int, z: int) -> void:
 
 ## 拱门：通道上方横一段墙，下面开拱形门洞；拱门以上一直补到两侧墙顶。
 ## 门墩站在走道里，要有碰撞；拱顶在头顶上方，不用碰撞
+## 拱门两面各贴一圈拱石（rot 的 z 是拱门厚度方向）
+func _add_voussoirs(rot: Basis, center: Vector3, depth: float) -> void:
+	if not trims.has("voussoirs"):
+		return
+	trims["voussoirs"].append(Transform3D(rot, center + rot.z * depth / 2.0))
+	var back := Basis(-rot.x, Vector3.UP, -rot.z)
+	trims["voussoirs"].append(Transform3D(back, center - rot.z * depth / 2.0))
+
+
+func _next_to_room(b: Vector2i) -> bool:
+	for room: Dictionary in gen.rooms:
+		if (room["rect"] as Rect2i).grow(1).has_point(b):
+			return true
+	return false
+
+
+## 实心块（墙、矮墙、观景台柱、步道跨过通道的桥面、小房间门口的厚墙）的顶高；不是实心块返回 -INF
+func _solid_top(x: int, z: int) -> float:
+	if x < 0 or z < 0 or x >= n or z >= n:
+		return INF
+	var k: int = gen.kind[z][x]
+	if k == MazeGen.WALL or k == MazeGen.PARAPET:
+		return gen.wall_top[z][x]
+	if k == MazeGen.TERRACE:
+		return gen.height[z][x]
+	if gen.span[z][x]:
+		return gen.wall_top[z][x]
+	if gen.doorway[z][x]:
+		return INF
+	return -INF
+
+
+## 建筑装饰件（tools/blender/trim_kit.py）：
+## - 墙顶压檐：凡是墙顶比旁边高出一截的那一面，沿顶边挑出一道线脚；两面都露着的外角补一块角件；
+## - 墙脚基座：朝着平地通道的墙面，墙根一道凸出的基座；
+## - 转角壁柱：墙角块（偶数行偶数列）朝通道的那一面，从基座顶一直到压檐下面，顶上一个柱头。
+## 朝着房间里的墙面一律不加（屋里有自己的内衬），开了拱窗、架着拱门或桥面的那一面不加壁柱
+func _build_trim() -> void:
+	if trim_meshes.is_empty():
+		return
+	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1)]
+	var room_blocks := {}
+	for room: Dictionary in gen.rooms:
+		var r: Rect2i = room["rect"]
+		for z in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				room_blocks[Vector2i(x, z)] = true
+	for z in range(1, n - 1):
+		for x in range(1, n - 1):
+			var k: int = gen.kind[z][x]
+			if k != MazeGen.WALL and k != MazeGen.PARAPET and k != MazeGen.TERRACE:
+				continue
+			var top := _solid_top(x, z)
+			var center := _block_to_world(x, z)
+			var cope: Array[bool] = []
+			var foot: Array[float] = []   # 这一面墙脚的地面高度；没有基座是 NAN
+			for d in dirs:
+				var nb := Vector2i(x + d.x, z + d.y)
+				var into_room := room_blocks.has(nb)
+				cope.append(not into_room and _solid_top(nb.x, nb.y) < top - 0.3)
+				var h := NAN
+				if not into_room and gen.kind[nb.y][nb.x] == MazeGen.FLOOR and not gen.doorway[nb.y][nb.x] \
+						and k != MazeGen.PARAPET and top - gen.height[nb.y][nb.x] > 1.5:
+					h = gen.height[nb.y][nb.x]
+				foot.append(h)
+			for i in 4:
+				var d := dirs[i]
+				var f := Vector3(d.x, 0, d.y)
+				var rot := Basis(Vector3.UP.cross(f), Vector3.UP, f)
+				var face := center + f * (block / 2.0)
+				if cope[i]:
+					trims["coping"].append(Transform3D(rot, face + Vector3(0, top, 0)))
+				var h: float = foot[i]
+				if not is_nan(h):
+					trims["plinth"].append(Transform3D(rot, face + Vector3(0, h, 0)))
+					var nb := Vector2i(x + d.x, z + d.y)
+					if k == MazeGen.WALL and x % 2 == 0 and z % 2 == 0 and top - h > 5.0 \
+							and not window_faces.has(Vector4i(x, z, d.x, d.y)) \
+							and not gen.arch[nb.y][nb.x] and not gen.span[nb.y][nb.x]:
+						var cap_y := top - 0.48
+						var shaft := cap_y - 0.34 - (h + 0.72)
+						trims["pilaster"].append(Transform3D(rot.scaled_local(Vector3(1, shaft, 1)), face + Vector3(0, h + 0.72, 0)))
+						trims["pilaster_cap"].append(Transform3D(rot, face + Vector3(0, cap_y, 0)))
+				# 外角：这一面和下一面（逆时针转 90°）都露着
+				var j := (i + 1) % 4
+				var d2 := dirs[j]
+				var f2 := Vector3(d2.x, 0, d2.y)
+				var corner := center + (f + f2) * (block / 2.0)
+				# 角件往 +x、+z 两边挑出：x 取 f、z 取 f2，保证右手系（不然面会翻过去）
+				var cb := Basis(f, Vector3.UP, f2) if f.cross(Vector3.UP).is_equal_approx(f2) else Basis(f2, Vector3.UP, f)
+				if cope[i] and cope[j]:
+					trims["coping_corner"].append(Transform3D(cb, corner + Vector3(0, top, 0)))
+				if not is_nan(foot[i]) and not is_nan(foot[j]) and is_equal_approx(foot[i], foot[j]):
+					trims["plinth_corner"].append(Transform3D(cb, corner + Vector3(0, foot[i], 0)))
+
+
 func _build_gates() -> void:
 	for z in n:
 		for x in n:
@@ -381,6 +501,8 @@ func _build_gates() -> void:
 			var along_x := x % 2 == 0
 			var rot := Basis(Vector3(0, 0, 1), Vector3.UP, Vector3(-1, 0, 0)) if along_x else Basis.IDENTITY
 			gates.append(Transform3D(rot, center))
+			if not _in_room(Vector2i(x, z)) and not _next_to_room(Vector2i(x, z)):
+				_add_voussoirs(rot, center, GATE_D)
 			var pier := block / 2.0 - GATE_R
 			for side: float in [-1.0, 1.0]:
 				var off := rot.x * side * (block / 2.0 - pier / 2.0)
@@ -433,7 +555,7 @@ func _build_windows() -> void:
 					continue
 				if gen.arch[z + d.y][x + d.x] or r.randf() > WINDOW_CHANCE:
 					continue
-				if _in_room(Vector2i(x + d.x, z + d.y)) or gen.doorway[z + d.y][x + d.x]:
+				if _in_room(Vector2i(x + d.x, z + d.y)) or gen.doorway[z + d.y][x + d.x] or gen.span[z + d.y][x + d.x]:
 					continue
 				var f := Vector3(d.x, 0, d.y)
 				var rot := Basis(Vector3.UP.cross(f), Vector3.UP, f)
@@ -441,6 +563,7 @@ func _build_windows() -> void:
 				var y: float = gen.height[z + d.y][x + d.x] + 1.0
 				while y + WINDOW_SPRING + WINDOW_R + 0.6 < top:
 					windows.append(Transform3D(rot, face + Vector3(0, y, 0)))
+					window_faces[Vector4i(x, z, d.x, d.y)] = true
 					y += WINDOW_STOREY
 
 
