@@ -88,6 +88,8 @@ class Minimap extends Control:
 						color = Color(0.5, 0.7, 0.9)
 					_:
 						continue
+				if gen.walkway[z][x]:
+					color = Color(0.85, 0.78, 0.55, 0.95)   # 墙顶步道（含跨过通道的桥面）
 				draw_rect(Rect2(x * cell, z * cell, cell, cell), color)
 		# 房间：暗红色的方块
 		for room: Dictionary in gen.rooms:

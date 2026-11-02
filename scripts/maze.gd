@@ -25,6 +25,9 @@ const PLATFORM_W := 3.4
 const RAIL_T := 0.35             # 观景台栏杆：看起来齐腰高，碰撞做高一些，跳不过去
 const RAIL_H := 1.0
 const RAIL_BLOCK_H := 2.4
+const WALK_RAIL_H := 0.7         # 墙顶步道两侧的矮护墙：看得出是条路；碰撞稍高，能跳过去
+const WALK_RAIL_BLOCK_H := 1.0
+const SPAN_DECK := 0.8            # 步道跨过通道处桥面的厚度
 const GATE_R := 1.7              # 拱门：门洞半宽、起拱高度、拱门这段墙的高度和厚度
 const GATE_SPRING := 3.2
 const GATE_H := 6.0
@@ -89,6 +92,8 @@ func build() -> void:
 	add_child(body)
 	_build_walls()
 	_build_band_rails()
+	_build_walkway_rails()
+	_build_spans()
 	_build_floors()
 	for z in n:
 		for x in n:
@@ -207,6 +212,58 @@ func _build_walls() -> void:
 			while x < n and _is_solid(x, z) and not gen.arcade[z][x] and is_equal_approx(gen.wall_top[z][x], top):
 				x += 1
 			_add_column(wall_boxes, start, x - 1, z, top)
+
+
+## 步道跨过通道的地方：通道两头各一道拱，拱上补墙到桥面，顶上一块和墙顶齐平的桥面。
+## 人在下面照样走通道，在上面沿步道走过去
+func _build_spans() -> void:
+	for z in n:
+		for x in n:
+			if not gen.span[z][x]:
+				continue
+			var h: float = gen.height[z][x]
+			var top: float = gen.wall_top[z][x]
+			var center := _block_to_world(x, z) + Vector3(0, h, 0)
+			var along_x := x % 2 == 0
+			var rot := Basis(Vector3(0, 0, 1), Vector3.UP, Vector3(-1, 0, 0)) if along_x else Basis.IDENTITY
+			var run := rot.z   # 顺着通道的方向
+			var pier := block / 2.0 - GATE_R
+			for end: float in [-1.0, 1.0]:
+				var c := center + run * end * (block - GATE_D) / 2.0
+				gates.append(Transform3D(rot, c))
+				for side: float in [-1.0, 1.0]:
+					var off := rot.x * side * (block / 2.0 - pier / 2.0)
+					_add_collider(c + off + Vector3(0, GATE_SPRING / 2.0, 0), Vector3(pier, GATE_SPRING, GATE_D), rot)
+				var fill := top - h - GATE_H
+				if fill > 0.0:
+					_add_box(wall_boxes, c + Vector3(0, GATE_H + fill / 2.0, 0), (rot * Vector3(block, fill, GATE_D)).abs(), Basis.IDENTITY, false)
+			var deck := Vector3(block, SPAN_DECK, block)
+			_add_box(wall_boxes, center + Vector3(0, top - h - SPAN_DECK / 2.0, 0), deck, Basis.IDENTITY, false)
+			_add_collider(center + Vector3(0, top - h - SPAN_DECK / 2.0, 0), deck)
+
+
+## 墙顶步道：沿着步道的边砌一道矮护墙。旁边也是步道、是同高的挑台、或者是更高的墙，就不砌
+func _build_walkway_rails() -> void:
+	for z in n:
+		for x in n:
+			if not gen.walkway[z][x]:
+				continue
+			var top: float = gen.wall_top[z][x]
+			var center := _block_to_world(x, z)
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx := x + d.x
+				var nz := z + d.y
+				if nx < 0 or nz < 0 or nx >= n or nz >= n or gen.walkway[nz][nx]:
+					continue
+				if _is_solid(nx, nz) and gen.wall_top[nz][nx] > top + WALK_RAIL_H:
+					continue
+				if gen.is_open(nx, nz) and is_equal_approx(gen.height[nz][nx], top):
+					continue
+				var f := Vector3(d.x, 0, d.y)
+				var edge := center + f * (block - RAIL_T) / 2.0
+				var size := Vector3(RAIL_T, 0, block) if d.x != 0 else Vector3(block, 0, RAIL_T)
+				_add_box(wall_boxes, edge + Vector3(0, top + WALK_RAIL_H / 2.0, 0), size + Vector3(0, WALK_RAIL_H, 0), Basis.IDENTITY, false)
+				_add_collider(edge + Vector3(0, top + WALK_RAIL_BLOCK_H / 2.0, 0), size + Vector3(0, WALK_RAIL_BLOCK_H, 0))
 
 
 ## 观景台：一根实心柱顶到高层地面；凡是邻块比它低（崖边、楼梯槽、深渊）的那条边立一道栏杆。
