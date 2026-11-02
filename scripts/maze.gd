@@ -6,6 +6,7 @@ extends Node3D
 const MazeGen = preload("res://scripts/maze_gen.gd")
 const ArchMesh = preload("res://scripts/arch_mesh.gd")
 const WallShader = preload("res://scripts/wall.gdshader")
+const InteriorShader = preload("res://scripts/interior.gdshader")
 const Room = preload("res://scripts/rooms/room.gd")
 const ROOM_NEAR := 30.0          # 走到离房间中心这么近才把屋里搭出来
 const ROOM_FAR := 60.0           # 走远到这么远再拆掉
@@ -45,7 +46,7 @@ var gen: RefCounted              # MazeGen：网格数据，小地图也读它
 var n := 0
 var wall_mat: ShaderMaterial
 var floor_mat: ShaderMaterial
-var hole_mat: StandardMaterial3D
+var window_mat: ShaderMaterial
 var gate_mesh: ArrayMesh
 var window_mesh: ArrayMesh
 var arcade_mesh: ArrayMesh
@@ -137,9 +138,6 @@ func _make_materials() -> void:
 	wall_mat.shader = WallShader
 	floor_mat = wall_mat
 
-	hole_mat = StandardMaterial3D.new()
-	hole_mat.albedo_color = Color(0.015, 0.016, 0.018)
-	hole_mat.roughness = 1.0
 
 	gate_mesh = ArchMesh.gate(block / 2.0, GATE_H, GATE_D, GATE_R, GATE_SPRING)
 	gate_mesh.surface_set_material(0, wall_mat)
@@ -150,7 +148,10 @@ func _make_materials() -> void:
 	doorway_mesh.surface_set_material(0, wall_mat)
 	window_mesh = ArchMesh.window(WINDOW_R, WINDOW_SPRING, 0.28, 0.18)
 	window_mesh.surface_set_material(0, wall_mat)
-	window_mesh.surface_set_material(1, hole_mat)
+	# 窗洞里画一间并不存在的毛坯房（假室内），见 interior.gdshader
+	window_mat = ShaderMaterial.new()
+	window_mat.shader = InteriorShader
+	window_mesh.surface_set_material(1, window_mat)
 
 
 ## 加一个方块：list 决定材质；rot 用于斜放的楼梯坡道和斜桥
