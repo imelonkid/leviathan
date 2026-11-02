@@ -6,11 +6,12 @@ extends Node3D
 const MazeGen = preload("res://scripts/maze_gen.gd")
 const ArchMesh = preload("res://scripts/arch_mesh.gd")
 const WallShader = preload("res://scripts/wall.gdshader")
-const ROOM_SCRIPTS := {
-	"ward": preload("res://scripts/rooms/ward.gd"),
-	"shrine": preload("res://scripts/rooms/shrine.gd"),
-	"clocks": preload("res://scripts/rooms/clocks.gd"),
-}
+const Room = preload("res://scripts/rooms/room.gd")
+const ROOM_NEAR := 30.0          # 走到离房间中心这么近才把屋里搭出来
+const ROOM_FAR := 60.0           # 走远到这么远再拆掉
+const DOOR_R := 0.65             # 小房间的门：厚墙上的窄拱门，半宽、起拱高度、这段墙的高度
+const DOOR_SPRING := 1.9
+const DOOR_H := 3.2
 const ROOM_FOG_CUT := -0.02      # 房间里抵消全局体积雾（= main.gd 的 volumetric_fog_density），房间自己要雾再加
 
 const BOTTOM := -60.0            # 墙和地面柱一直延伸到这里，深渊底下是雾
@@ -54,6 +55,10 @@ var field_boxes: Array[Transform3D] = []
 var gates: Array[Transform3D] = []
 var windows: Array[Transform3D] = []
 var arcades: Array[Transform3D] = []
+var doorways: Array[Transform3D] = []
+var doorway_mesh: ArrayMesh
+var room_nodes := {}             # 房间序号 → 已经搭出来的屋里（Room 节点）
+var room_check := 0.0
 var body: StaticBody3D
 
 
@@ -74,6 +79,8 @@ func build() -> void:
 	gates.clear()
 	windows.clear()
 	arcades.clear()
+	doorways.clear()
+	room_nodes.clear()
 
 	body = StaticBody3D.new()
 	add_child(body)
@@ -90,6 +97,7 @@ func build() -> void:
 				MazeGen.PLATFORM:
 					_build_platform(x, z)
 	_build_gates()
+	_build_doorways()
 	_build_arcades()
 	_build_windows()
 	_build_plaza_monoliths()
@@ -100,6 +108,7 @@ func build() -> void:
 	_commit(field_boxes, wall_mat, false)
 	_commit_mesh(gates, gate_mesh)
 	_commit_mesh(arcades, arcade_mesh)
+	_commit_mesh(doorways, doorway_mesh)
 	_commit_mesh(windows, window_mesh)
 
 
@@ -135,6 +144,8 @@ func _make_materials() -> void:
 	# 拱廊墙每块墙开两个拱洞，每个拱洞是半块宽的一扇“拱门”，厚度就是整块墙
 	arcade_mesh = ArchMesh.gate(block / 4.0, ARCADE_BAND, block, ARCADE_R, ARCADE_SPRING)
 	arcade_mesh.surface_set_material(0, wall_mat)
+	doorway_mesh = ArchMesh.gate(block / 2.0, DOOR_H, block, DOOR_R, DOOR_SPRING)
+	doorway_mesh.surface_set_material(0, wall_mat)
 	window_mesh = ArchMesh.window(WINDOW_R, WINDOW_SPRING, 0.28, 0.18)
 	window_mesh.surface_set_material(0, wall_mat)
 	window_mesh.surface_set_material(1, hole_mat)
@@ -362,7 +373,7 @@ func _build_windows() -> void:
 					continue
 				if gen.arch[z + d.y][x + d.x] or r.randf() > WINDOW_CHANCE:
 					continue
-				if _in_room(Vector2i(x + d.x, z + d.y)):
+				if _in_room(Vector2i(x + d.x, z + d.y)) or gen.doorway[z + d.y][x + d.x]:
 					continue
 				var f := Vector3(d.x, 0, d.y)
 				var rot := Basis(Vector3.UP.cross(f), Vector3.UP, f)
@@ -380,19 +391,16 @@ func _in_room(b: Vector2i) -> bool:
 	return false
 
 
-## 房间：盖屋顶，再用负密度的雾抵消全局体积雾。
-## 屋里的内衬（不吃环境光的墙面、地面、天花板）和东西交给 scripts/rooms/ 下对应主题的脚本
+## 房间：这里只盖屋顶、用负密度的雾抵消全局体积雾；屋里（内衬、道具、灯、声音）由 Room 在玩家走近时
+## 按房间的种子组合出来，走远了拆掉（_process 里每 0.25 秒看一次距离）
 func _build_rooms() -> void:
-	for i in gen.rooms.size():
-		var room: Dictionary = gen.rooms[i]
+	for room: Dictionary in gen.rooms:
 		var r: Rect2i = room["rect"]
 		var base: float = room["base"]
-		var center := _block_to_world(r.position.x + 1, r.position.y + 1)
-		var inner := Vector3(r.size.x * block, MazeGen.ROOM_H, r.size.y * block)
-		_add_box(wall_boxes, center + Vector3(0, base + MazeGen.ROOM_H + 0.3, 0), Vector3(inner.x, 0.6, inner.z))
-
-		var mid := center + Vector3(0, base + inner.y / 2.0, 0)
-
+		var h: float = room["height"]
+		var inner := Vector3(r.size.x * block, h, r.size.y * block)
+		var center := _room_center(room)
+		_add_box(wall_boxes, center + Vector3(0, h + 0.3, 0), Vector3(inner.x, 0.6, inner.z))
 		var fog := FogVolume.new()
 		fog.size = inner
 		fog.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
@@ -400,23 +408,80 @@ func _build_rooms() -> void:
 		fm.density = ROOM_FOG_CUT
 		fog.material = fm
 		add_child(fog)
-		fog.global_position = mid
+		fog.global_position = center + Vector3(0, h / 2.0, 0)
 
-		var node: Node3D = ROOM_SCRIPTS[room["theme"]].new()
-		node.name = "Room_" + String(room["theme"])
-		node.size = inner
-		node.seed_value = seed_value * 31 + i
-		node.wall_shader = WallShader
-		node.gate_shape = Vector3(GATE_R, GATE_SPRING, GATE_H)
-		for d: Vector2i in room["doors"]:
-			# 门在围墙上：取门洞正中、贴着屋里那一面墙
-			var off := _block_to_world(d.x, d.y) - center
-			off = Vector3(signf(off.x) * inner.x / 2.0 if absf(off.x) > absf(off.z) else off.x, 0,
-				signf(off.z) * inner.z / 2.0 if absf(off.z) > absf(off.x) else off.z)
-			node.doors.append(off)
-		add_child(node)
-		node.global_position = center + Vector3(0, base, 0)
-		node.build()
+
+## 房间地面正中的世界坐标
+func _room_center(room: Dictionary) -> Vector3:
+	var r: Rect2i = room["rect"]
+	var a := _block_to_world(r.position.x, r.position.y)
+	var b := _block_to_world(r.end.x - 1, r.end.y - 1)
+	return (a + b) / 2.0 + Vector3(0, room["base"], 0)
+
+
+func _process(delta: float) -> void:
+	room_check -= delta
+	if room_check > 0.0 or gen == null:
+		return
+	room_check = 0.25
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var eye := cam.global_position
+	for i in gen.rooms.size():
+		var room: Dictionary = gen.rooms[i]
+		var d := eye.distance_to(_room_center(room))
+		if d < ROOM_NEAR and not room_nodes.has(i):
+			room_nodes[i] = _make_room(i)
+		elif d > ROOM_FAR and room_nodes.has(i):
+			(room_nodes[i] as Node).queue_free()
+			room_nodes.erase(i)
+
+
+## 搭出第 i 间房的屋里
+func _make_room(i: int) -> Node3D:
+	var room: Dictionary = gen.rooms[i]
+	var r: Rect2i = room["rect"]
+	var center := _room_center(room)
+	var node: Node3D = Room.new()
+	node.name = "Room_%d" % i
+	node.size = Vector3(r.size.x * block, room["height"], r.size.y * block)
+	node.seed_value = seed_value * 131 + i
+	node.wall_shader = WallShader
+	node.gate_shape = Vector2(DOOR_R, DOOR_SPRING) if room["small"] else Vector2(GATE_R, GATE_SPRING)
+	for d: Vector2i in room["doors"]:
+		# 门在围墙上：取门洞正中、贴着屋里那一面墙
+		var off := _block_to_world(d.x, d.y) + Vector3(0, room["base"], 0) - center
+		off = Vector3(signf(off.x) * node.size.x / 2.0 if absf(off.x) > absf(off.z) else off.x, 0,
+			signf(off.z) * node.size.z / 2.0 if absf(off.z) > absf(off.x) else off.z)
+		node.doors.append(off)
+	add_child(node)
+	node.global_position = center
+	node.build()
+	return node
+
+
+## 小房间的门：整块通道变成一段厚墙，中间开一个窄拱门（穿透 5 米厚的墙，像一条短隧道），上面补到墙顶。
+## 碰撞：两侧门墩一直到这段墙顶，上面的补墙另算；拱顶在头顶以上，不用碰撞
+func _build_doorways() -> void:
+	for z in n:
+		for x in n:
+			if not gen.doorway[z][x]:
+				continue
+			var h: float = gen.height[z][x]
+			var center := _block_to_world(x, z) + Vector3(0, h, 0)
+			var along_x := x % 2 == 0
+			var rot := Basis(Vector3(0, 0, 1), Vector3.UP, Vector3(-1, 0, 0)) if along_x else Basis.IDENTITY
+			doorways.append(Transform3D(rot, center))
+			var pier := block / 2.0 - DOOR_R
+			for side: float in [-1.0, 1.0]:
+				var off := rot.x * side * (block / 2.0 - pier / 2.0)
+				_add_collider(center + off + Vector3(0, DOOR_H / 2.0, 0), Vector3(pier, DOOR_H, block), rot)
+			var across := Vector2i(0, 1) if along_x else Vector2i(1, 0)
+			var top := minf(gen.wall_top[z - across.y][x - across.x], gen.wall_top[z + across.y][x + across.x])
+			var fill := top - h - DOOR_H
+			if fill > 0.0:
+				_add_box(wall_boxes, center + Vector3(0, DOOR_H + fill / 2.0, 0), Vector3(block, fill, block))
 
 
 ## 顶层广场四角的方尖柱，给中心一点仪式感
