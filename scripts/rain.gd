@@ -1,6 +1,8 @@
 extends Node3D
 ## 雨：跟着镜头的一片雨丝（GPU 粒子），加上雨声——铺底的沙沙声（立体声循环）
-## 和身边打在石头、铁栏杆上的雨点（3D，一声一声的）。雨的大小慢慢起伏。
+## 和身边打在石头、铁栏杆上的雨点（3D，一声一声的）。
+## 天气一段一段地随机来：每段 2～6 分钟，约三成五是停雨（只剩乌云和干打雷），下雨的那段大小也随机；
+## 两段之间 10～20 秒慢慢变过去，雨丝渐稀、雨声渐收。
 ## 走进屋里（soundscape.indoor）看不见雨，雨声变闷变小，身边的雨点停掉。
 ## 声音走 Rain 总线，Rain 再送进 World 总线，跟着分区混响走。
 
@@ -9,6 +11,11 @@ const AMOUNT := 3000             # 雨丝数量；乌云低档时减到四成
 const FALL := 22.0               # 雨丝下落速度（米/秒）
 const TICK_RADIUS := 7.0         # 身边的雨点落在多远以内
 const RAIN_DB := -18.0
+const SPELL_MIN := 120.0         # 一段天气持续多久（秒）
+const SPELL_MAX := 360.0
+const DRY_CHANCE := 0.35         # 一段天气是停雨的概率
+const FADE_MIN := 10.0           # 天气变化用多久渐变过去（秒）
+const FADE_MAX := 20.0
 
 var settings: Node               # main 注入
 var soundscape: Node
@@ -22,13 +29,18 @@ var lp: AudioEffectLowPassFilter
 var rain_bus := -1
 var rng := RandomNumberGenerator.new()
 var tick_t := 0.0
-var level := 0.7                 # 雨的大小 0～1
+var level := 0.0                 # 雨的大小 0～1（当前，渐变中）
+var goal := 0.0                  # 这段天气的雨量；0 = 停雨
+var spell_left := 0.0            # 这段天气还剩多久
+var fade_rate := 0.1             # 每秒往 goal 走多少
 var inside := 0.0                # 0 屋外 ～ 1 屋里，平滑过
 var t := 0.0
 
 
 func _ready() -> void:
 	rng.randomize()
+	_next_spell()
+	level = goal                 # 开局直接就是这段天气，不从零渐变
 	rain_bus = AudioServer.get_bus_index("Rain")
 	if rain_bus < 0:
 		AudioServer.add_bus()
@@ -110,25 +122,36 @@ func _process(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
-	# 雨的大小：几分钟一个起伏，偶尔一阵大的
-	level = clampf(0.55 + 0.25 * sin(t * 0.021) + 0.2 * sin(t * 0.0537 + 1.3), 0.15, 1.0)
+	spell_left -= delta
+	if spell_left <= 0.0:
+		_next_spell()
+	# 下雨的那段里还有一点忽大忽小
+	var wobble := 0.08 * sin(t * 0.09) if goal > 0.0 else 0.0
+	level = move_toward(level, clampf(goal + wobble, 0.0, 1.0), fade_rate * delta)
 	var target := 1.0 if soundscape and soundscape.indoor else 0.0
 	inside = move_toward(inside, target, delta * 1.5)
 
 	var fwd := -cam.global_basis.z
 	particles.global_position = cam.global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 8.0 + Vector3(0, 14, 0)
 	particles.amount_ratio = level
-	particles.visible = inside < 0.5
+	particles.visible = inside < 0.5 and level > 0.01
 
 	lp.cutoff_hz = lerpf(20000.0, 650.0, inside)
-	bed.volume_db = RAIN_DB + linear_to_db(maxf(level, 0.05)) - inside * 8.0
+	bed.volume_db = RAIN_DB + linear_to_db(maxf(level, 0.0001)) - inside * 8.0
 
-	if inside > 0.5:
+	if inside > 0.5 or level < 0.1:
 		return
 	tick_t -= delta
 	if tick_t <= 0.0:
 		tick_t = rng.randf_range(0.2, 0.7) / maxf(level, 0.2)
 		_tick(cam.global_position)
+
+
+## 换下一段天气：停雨，或者一场随机大小的雨
+func _next_spell() -> void:
+	spell_left = rng.randf_range(SPELL_MIN, SPELL_MAX)
+	goal = 0.0 if rng.randf() < DRY_CHANCE else rng.randf_range(0.3, 1.0)
+	fade_rate = 1.0 / rng.randf_range(FADE_MIN, FADE_MAX)
 
 
 ## 身边一滴：落在镜头周围的地上、墙上或者栏杆上
