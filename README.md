@@ -66,7 +66,7 @@ Fifteen doors in every maze lead somewhere. Each room is put together the moment
 <sub><i>Caught in a beam: color drains away, the edges close in, and a low pressure fills your ears.</i></sub>
 </p>
 
-**Also in the maze:** fifteen rooms you can walk into, each one assembled the moment you approach it from a library of 37 props and a recipe (ward, surgery, shrine, clock room, cell, storeroom, bathroom, nursery, morgue, waiting room, classroom), marked with pools, drag marks, handprints and walls that slowly weep blood depending on how wrong it is meant to feel. Step inside and the doll's head may turn to follow you, or the rocking chair starts to rock; some hang upside down from the ceiling, some float, in some the chairs turn to face you whenever you look away, one may hold a doll twice your height, about a quarter of them are something else entirely once you leave and turn your back, and a few look almost normal, except for the doll on the table facing the door, walled courtyards with stairs up to a walkway along their wall tops, chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
+**Also in the maze:** fifteen rooms you can walk into, each one assembled the moment you approach it from a library of 37 props and a recipe (ward, surgery, shrine, clock room, cell, storeroom, bathroom, nursery, morgue, waiting room, classroom), marked with pools, drag marks, handprints and walls that slowly weep blood depending on how wrong it is meant to feel. Step inside and the doll's head may turn to follow you, or the rocking chair starts to rock; some hang upside down from the ceiling, some float, in some the chairs turn to face you whenever you look away, one may hold a doll twice your height, about a quarter of them are something else entirely once you leave and turn your back, and a few look almost normal, except for the doll on the table facing the door; behind every arched window a derelict room you can see but never reach, with peeling walls, toppled chairs, cobwebs, boarded or barred panes, the odd flickering bulb, and now and then a figure standing inside that is gone by the time you get close; walled courtyards with stairs up to a walkway along their wall tops, chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
 
 ## 📦 Download
 
@@ -136,7 +136,8 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 | v0.3 | Spawn on the ground and glide on limited energy; arcades, courtyards, wall-top walkways | ✅ |
 | v0.4 | The first rooms you can walk into: a ward, a shrine, a clock room | ✅ |
 | v0.5 | Rooms assembled on approach from 31 props, 10 recipes and modifiers; 15 per maze; blood, weeping walls, things that move when you step in | ✅ |
-| v0.6 | Rooms that change when you turn your back, two new modifiers, waiting room, classroom and dining room, 37 props | 🚧 |
+| v0.6 | Rooms that change when you turn your back, two new modifiers, waiting room, classroom and dining room, 37 props | ✅ |
+| v0.7 | A derelict room behind every window (interior-mapping shader) | 🚧 |
 | next | Larger courtyards, connected wall-top walkways, rain | ⏳ |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).
