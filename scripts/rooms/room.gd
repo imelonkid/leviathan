@@ -880,7 +880,7 @@ func sound(stream: AudioStream, pos: Vector3, volume_db := 0.0, unit := 3.0, aut
 	s.volume_db = volume_db
 	s.unit_size = unit
 	s.max_distance = 24.0
-	s.bus = "Ambience"
+	s.bus = "World"   # 跟着分区混响走；Ambience 总线的大空间混响留给雷声
 	s.position = pos
 	(parent if parent else self).add_child(s)
 	if autoplay:

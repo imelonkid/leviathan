@@ -34,6 +34,7 @@ var values := {
 	"mouse_sens": 0.0025,
 	"key_look_speed": 120.0,     # 方向键转视角的速度（度/秒）
 	"music_volume": 0.8,
+	"ambience_volume": 0.8,      # 雨、脚步、利维坦低鸣、屋里的声音（World 总线）
 	"photo_mode": false,         # V 键自由飞行（穿墙、无重力），截图和看全景用
 }
 
@@ -94,11 +95,12 @@ func apply() -> void:
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if values["vsync"] else DisplayServer.VSYNC_DISABLED)
 
-	var music_bus := AudioServer.get_bus_index("Music")
-	if music_bus >= 0:
-		var v: float = values["music_volume"]
-		AudioServer.set_bus_volume_db(music_bus, linear_to_db(maxf(v, 0.0001)))
-		AudioServer.set_bus_mute(music_bus, v <= 0.001)
+	for pair: Array in [["Music", "music_volume"], ["World", "ambience_volume"]]:
+		var idx := AudioServer.get_bus_index(pair[0])
+		if idx >= 0:
+			var v: float = values[pair[1]]
+			AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(v, 0.0001)))
+			AudioServer.set_bus_mute(idx, v <= 0.001)
 
 	changed.emit()
 
