@@ -25,6 +25,10 @@ const WINDOW_R := 0.75           # 盲拱窗：窗洞半宽、起拱高度、一
 const WINDOW_SPRING := 1.9
 const WINDOW_STOREY := 4.2
 const WINDOW_CHANCE := 0.55      # 一面墙开拱窗的概率（开就整面墙每层都开）
+const ARCADE_SILL := 1.0         # 拱廊墙：拱洞下沿离地多高、拱洞半宽、起拱高度（相对下沿）、拱洞这一段墙的高度
+const ARCADE_R := 0.85
+const ARCADE_SPRING := 1.6
+const ARCADE_BAND := 3.4
 
 @export var cells := 25          # 每边的格子数
 @export var block := 5.0         # 一个网格块的边长（米），走道和墙同宽
@@ -37,11 +41,13 @@ var floor_mat: ShaderMaterial
 var hole_mat: StandardMaterial3D
 var gate_mesh: ArrayMesh
 var window_mesh: ArrayMesh
+var arcade_mesh: ArrayMesh
 var wall_boxes: Array[Transform3D] = []
 var floor_boxes: Array[Transform3D] = []
 var field_boxes: Array[Transform3D] = []
 var gates: Array[Transform3D] = []
 var windows: Array[Transform3D] = []
+var arcades: Array[Transform3D] = []
 var body: StaticBody3D
 
 
@@ -61,6 +67,7 @@ func build() -> void:
 	field_boxes.clear()
 	gates.clear()
 	windows.clear()
+	arcades.clear()
 
 	body = StaticBody3D.new()
 	add_child(body)
@@ -77,6 +84,7 @@ func build() -> void:
 				MazeGen.PLATFORM:
 					_build_platform(x, z)
 	_build_gates()
+	_build_arcades()
 	_build_windows()
 	_build_plaza_monoliths()
 	_build_outer_field()
@@ -84,6 +92,7 @@ func build() -> void:
 	_commit(floor_boxes, floor_mat)
 	_commit(field_boxes, wall_mat, false)
 	_commit_mesh(gates, gate_mesh)
+	_commit_mesh(arcades, arcade_mesh)
 	_commit_mesh(windows, window_mesh)
 
 
@@ -116,6 +125,9 @@ func _make_materials() -> void:
 
 	gate_mesh = ArchMesh.gate(block / 2.0, GATE_H, GATE_D, GATE_R, GATE_SPRING)
 	gate_mesh.surface_set_material(0, wall_mat)
+	# 拱廊墙每块墙开两个拱洞，每个拱洞是半块宽的一扇“拱门”，厚度就是整块墙
+	arcade_mesh = ArchMesh.gate(block / 4.0, ARCADE_BAND, block, ARCADE_R, ARCADE_SPRING)
+	arcade_mesh.surface_set_material(0, wall_mat)
 	window_mesh = ArchMesh.window(WINDOW_R, WINDOW_SPRING, 0.28, 0.18)
 	window_mesh.surface_set_material(0, wall_mat)
 	window_mesh.surface_set_material(1, hole_mat)
@@ -161,17 +173,17 @@ func _is_solid(x: int, z: int) -> bool:
 	return k == MazeGen.WALL or k == MazeGen.PARAPET
 
 
-## 按行合并：同样高度的连续墙（含矮墙）合成一段
+## 按行合并：同样高度的连续墙（含矮墙）合成一段；拱廊墙另外搭
 func _build_walls() -> void:
 	for z in n:
 		var x := 0
 		while x < n:
-			if not _is_solid(x, z):
+			if not _is_solid(x, z) or gen.arcade[z][x]:
 				x += 1
 				continue
 			var start := x
 			var top: float = gen.wall_top[z][x]
-			while x < n and _is_solid(x, z) and is_equal_approx(gen.wall_top[z][x], top):
+			while x < n and _is_solid(x, z) and not gen.arcade[z][x] and is_equal_approx(gen.wall_top[z][x], top):
 				x += 1
 			_add_column(wall_boxes, start, x - 1, z, top)
 
@@ -303,6 +315,30 @@ func _build_gates() -> void:
 				_add_box(wall_boxes, center + Vector3(0, GATE_H + fill / 2.0, 0), size.abs(), Basis.IDENTITY, false)
 
 
+## 拱廊墙：下沿以下一段实墙，中间一段并排两个穿透整块墙的拱洞，上面一直补到墙顶。
+## 碰撞仍是整块实墙：看得过去，走不过去，也滑翔不过去
+func _build_arcades() -> void:
+	for z in n:
+		for x in n:
+			if not gen.arcade[z][x]:
+				continue
+			# 隔开左右两格的墙（x 为偶数）拱洞沿 x 方向穿过；隔开上下两格的沿 z
+			var across_x := x % 2 == 0
+			var a := Vector2i(x - 1, z) if across_x else Vector2i(x, z - 1)
+			var floor_y: float = gen.height[a.y][a.x]
+			var top: float = gen.wall_top[z][x]
+			var center := _block_to_world(x, z)
+			var sill := floor_y + ARCADE_SILL
+			var rot := Basis(Vector3(0, 0, 1), Vector3.UP, Vector3(-1, 0, 0)) if across_x else Basis.IDENTITY
+			for side: float in [-1.0, 1.0]:
+				arcades.append(Transform3D(rot, center + rot.x * side * block / 4.0 + Vector3(0, sill, 0)))
+			var below := sill - BOTTOM
+			_add_box(wall_boxes, center + Vector3(0, BOTTOM + below / 2.0, 0), Vector3(block, below, block), Basis.IDENTITY, false)
+			var above := top - sill - ARCADE_BAND
+			_add_box(wall_boxes, center + Vector3(0, top - above / 2.0, 0), Vector3(block, above, block), Basis.IDENTITY, false)
+			_add_collider(center + Vector3(0, (BOTTOM + top) / 2.0, 0), Vector3(block, top - BOTTOM, block))
+
+
 ## 盲拱窗：朝着平地的墙面上，按层开一排拱窗；同一面墙要开就每层都开，看起来像一栋楼的立面
 func _build_windows() -> void:
 	var r := RandomNumberGenerator.new()
@@ -310,7 +346,7 @@ func _build_windows() -> void:
 	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	for z in range(1, n - 1):
 		for x in range(1, n - 1):
-			if gen.kind[z][x] != MazeGen.WALL:
+			if gen.kind[z][x] != MazeGen.WALL or gen.arcade[z][x]:
 				continue
 			var top: float = gen.wall_top[z][x]
 			for d in dirs:

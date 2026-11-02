@@ -24,7 +24,7 @@ var maze: Node3D                 # main 注入：判断脚下是不是地面、�
 var energy := 1.0                # 滑翔能量 0～1，能量条读它
 var gliding := false             # 这次离地后升过空：松开空格进入滑翔，落地结束
 var rising := false
-var ground_y := 0.0              # 最近站过的地面高度（不算墙顶），升空上限以它为准
+var ground_y := 0.0              # 所在层的地面高度（墙顶上不更新），升空上限以它为准
 var space_was_down := false
 var space_held := 0.0            # 空格按住了多久：从地面一直按着，跳起后接着升空
 
@@ -158,8 +158,9 @@ func _physics_process(delta: float) -> void:
 
 	if is_on_floor():
 		last_safe = global_position
-		if _on_ground():
-			ground_y = global_position.y
+		var tier := _tier_floor()
+		if not is_nan(tier):
+			ground_y = tier
 		# 在地面走动时积攒能量（按水平走过的距离）
 		var moved := Vector2(global_position.x - before.x, global_position.z - before.z).length()
 		energy = minf(energy + moved * CHARGE_PER_M, 1.0)
@@ -171,12 +172,12 @@ func _physics_process(delta: float) -> void:
 	cam.position.y = sin(bob_t) * 0.04
 
 
-## 脚下是迷宫里的地面（走道、楼梯、桥、平台、观景台），不是墙顶
-func _on_ground() -> bool:
+## 脚下所在层的地面高度；站在墙顶上返回 NAN（不更新升空上限）
+func _tier_floor() -> float:
 	if maze == null:
-		return true
+		return global_position.y
 	var b: Vector2 = maze.world_to_block(global_position)
-	return maze.gen.is_open(int(floor(b.x)), int(floor(b.y)))
+	return maze.gen.tier_floor(int(floor(b.x)), int(floor(b.y)))
 
 
 ## 不让滑翔越过最外圈围墙
