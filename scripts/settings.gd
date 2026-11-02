@@ -32,6 +32,7 @@ var values := {
 	"fullscreen": false,
 	"vsync": true,
 	"mouse_sens": 0.0025,
+	"key_look_speed": 120.0,     # 方向键转视角的速度（度/秒）
 	"music_volume": 0.8,
 	"photo_mode": false,         # V 键自由飞行（穿墙、无重力），截图和看全景用
 }

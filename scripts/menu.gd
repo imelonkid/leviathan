@@ -51,12 +51,13 @@ func _ready() -> void:
 	_check(box, "fullscreen", "全屏")
 	_check(box, "vsync", "垂直同步")
 	_slider(box, "mouse_sens", "鼠标灵敏度", 0.0005, 0.006, 0.0001, "%.1f", 1000.0)
+	_slider(box, "key_look_speed", "方向键转向", 45.0, 240.0, 5.0, "%d°/秒")
 	_slider(box, "music_volume", "音乐音量", 0.0, 1.0, 0.05, "%d%%", 100.0)
 	_check(box, "photo_mode", "拍照模式：V 自由飞行，穿墙、不耗能量")
 	box.add_child(HSeparator.new())
 
 	var keys := Label.new()
-	keys.text = "WASD 移动 · Shift 奔跑 · 空格 跳跃，空中按住升空、松开滑翔 · F 提灯 · M 小地图\n" \
+	keys.text = "WASD 移动 · 方向键 / 鼠标 转视角 · Shift 奔跑 · 空格 跳跃，空中按住升空、松开滑翔 · F 提灯 · M 小地图\n" \
 		+ "滑翔耗能量，在地面走动时积攒 · R 换一座迷宫 · F3 调试信息 · F12 截图"
 	keys.add_theme_color_override("font_color", Color(0.6, 0.65, 0.7))
 	keys.add_theme_font_size_override("font_size", 14)
