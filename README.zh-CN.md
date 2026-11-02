@@ -12,6 +12,8 @@
 | --- | --- |
 | ![阶梯金字塔](docs/screenshots/tiers.jpg) | ![拱门走道](docs/screenshots/corridor.jpg) |
 | ![黑光扫过迷宫](docs/screenshots/beam.jpg) | ![闪电](docs/screenshots/lightning.jpg) |
+| ![血色的囚室](docs/screenshots/room_cell.jpg) | ![育婴室：婴儿床、摇椅和没有脸的人台](docs/screenshots/room_nursery.jpg) |
+| ![停尸间：铁皮柜浮在半空](docs/screenshots/room_morgue.jpg) | ![看起来正常的起居室，玩偶坐在桌上对着门](docs/screenshots/room_parlor.jpg) |
 
 - 引擎：Godot 4.6（Forward+ 渲染器）
 - 素材：场景全部程序化生成；背景音乐由作者提供
