@@ -85,7 +85,7 @@ Grab the latest build for your platform from **[Releases](https://github.com/ime
 | Key | Action |
 | --- | --- |
 | <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> | Move |
-| <kbd>Mouse</kbd> | Look |
+| <kbd>Mouse</kbd> or <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Look (arrow-key speed is in the menu) |
 | <kbd>Space</kbd> | Jump · **hold in the air to rise, release to glide** |
 | <kbd>Shift</kbd> | Run |
 | <kbd>F</kbd> | Lantern |
@@ -102,7 +102,7 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 
 ## ⚙️ Graphics settings
 
-The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, music volume, and a photo mode that unlocks free flight through walls.
+The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, and a photo mode that unlocks free flight through walls.
 
 ## 🛠️ Run from source
 

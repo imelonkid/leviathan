@@ -1,5 +1,5 @@
 extends CharacterBody3D
-## 第一人称漫游：WASD 移动，Shift 奔跑，空格跳，F 开关提灯。
+## 第一人称漫游：WASD 移动，鼠标或方向键转视角，Shift 奔跑，空格跳，F 开关提灯。
 ## 滑翔：空中按住空格往上升，松开后缓缓滑翔，都消耗能量；能量在地面行走时按走过的距离积攒，
 ## 用完就落回地面。升空高度以最近站过的地面为准，越得过层内的墙，翻不上一层的挡土墙。
 ## 拍照模式（菜单里打开）下 V 切换自由飞行：穿墙、无重力，空格上升、Ctrl 下降、Shift 加速。
@@ -15,6 +15,7 @@ const GLIDE_FALL := 2.0          # 滑翔时最快的下落速度（米/秒）
 const GLIDE_SPEED := 9.0         # 滑翔的水平速度
 const GLIDE_COST := 0.05         # 滑翔每秒消耗的能量（约 20 秒）
 const CHARGE_PER_M := 1.0 / 50.0 # 地面每走一米积攒的能量：走 50 米充满
+const LOOK_RAMP := 0.4           # 方向键按住多久转到全速（秒）：轻点一下转得慢，方便微调
 const CEILING := 13.0            # 升空的上限（相对最近站过的地面）：层内墙 8～11 米，挡土墙 12 米加 2.4 米栏杆
 
 var settings: Node               # 鼠标灵敏度从这里读，由 main 注入
@@ -27,6 +28,7 @@ var rising := false
 var ground_y := 0.0              # 所在层的地面高度（墙顶上不更新），升空上限以它为准
 var space_was_down := false
 var space_held := 0.0            # 空格按住了多久：从地面一直按着，跳起后接着升空
+var look_held := 0.0             # 方向键按住了多久
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var head: Node3D
@@ -84,6 +86,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			lamp.visible = not lamp.visible
 		elif key == KEY_V and settings.get_value("photo_mode"):
 			set_flying(not flying)
+
+
+## 方向键转视角：左右转身，上下抬头低头；速度在菜单里调
+func _process(delta: float) -> void:
+	var turn := Vector2.ZERO
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		turn.x = float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT))
+		turn.y = float(Input.is_physical_key_pressed(KEY_UP)) - float(Input.is_physical_key_pressed(KEY_DOWN))
+	if turn == Vector2.ZERO:
+		look_held = 0.0
+		return
+	look_held += delta
+	var speed: float = deg_to_rad(settings.get_value("key_look_speed")) * minf(0.3 + look_held / LOOK_RAMP, 1.0)
+	rotate_y(-turn.x * speed * delta)
+	head.rotate_x(turn.y * speed * 0.7 * delta)
+	head.rotation.x = clampf(head.rotation.x, deg_to_rad(-89.0), deg_to_rad(89.0))
 
 
 func set_flying(on: bool) -> void:

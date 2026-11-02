@@ -234,7 +234,7 @@ func _setup_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var label := Label.new()
-	label.text = "WASD 移动 · Shift 奔跑 · 空格 跳跃，空中按住升空、松开滑翔 · F 提灯 · M 地图 · Esc 菜单"
+	label.text = "WASD 移动 · 方向键 转视角 · Shift 奔跑 · 空格 跳跃，空中按住升空、松开滑翔 · F 提灯 · M 地图 · Esc 菜单"
 	label.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85, 0.85))
 	label.add_theme_font_size_override("font_size", 18)
 	label.position = Vector2(24, 20)
