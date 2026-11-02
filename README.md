@@ -46,12 +46,27 @@ Inspired by the image of a "geometric god ruling a labyrinth" in *Hellbound: Hel
 </tr>
 </table>
 
+### 🩸 The rooms
+
+Fifteen doors in every maze lead somewhere. Each room is put together the moment you get close, from a library of props and a recipe, and most of them are not places you want to stay.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/room_cell.jpg" alt="A blood-red cell with chains and a drag mark"></td>
+<td width="50%"><img src="docs/screenshots/room_nursery.jpg" alt="A nursery with cribs, rocking chairs and faceless mannequins"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/room_morgue.jpg" alt="A morgue where the lockers float above the floor"></td>
+<td width="50%"><img src="docs/screenshots/room_parlor.jpg" alt="A tidy parlor with a doll on the table, facing the door"></td>
+</tr>
+</table>
+
 <p align="center">
 <img src="docs/screenshots/hit.jpg" alt="Caught in the black light" width="80%"><br>
 <sub><i>Caught in a beam: color drains away, the edges close in, and a low pressure fills your ears.</i></sub>
 </p>
 
-**Also in the maze:** fifteen rooms you can walk into, each one assembled the moment you approach it from a library of props and a recipe (ward, surgery, shrine, clock room, cell, storeroom, bathroom), soaked in more or less blood depending on how wrong it is meant to feel; some hang upside down from the ceiling, some float, and a few look almost normal, except for the doll on the table facing the door, walled courtyards with stairs up to a walkway along their wall tops, chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
+**Also in the maze:** fifteen rooms you can walk into, each one assembled the moment you approach it from a library of 31 props and a recipe (ward, surgery, shrine, clock room, cell, storeroom, bathroom, nursery, morgue), marked with pools, drag marks, handprints and walls that slowly weep blood depending on how wrong it is meant to feel. Step inside and the doll's head may turn to follow you, or the rocking chair starts to rock; some hang upside down from the ceiling, some float, and a few look almost normal, except for the doll on the table facing the door, walled courtyards with stairs up to a walkway along their wall tops, chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
 
 ## 📦 Download
 
@@ -115,12 +130,13 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 
 ## 🗺️ Roadmap
 
-| Version | Focus | Status |
+| Version | What's in it | Status |
 | --- | --- | --- |
-| v0.1 | Foundation: settings menu, CI builds, releases | ✅ |
-| v0.2 | Spatial structure: the ziggurat, stairs, chasms, the storm, the god | ✅ |
-| v0.3 | Modular building kit: towers, arcades, gatehouses | 🚧 |
-| v0.4 | Materials & lighting: PBR, decals, light shafts | ⏳ |
+| v0.2 | The ziggurat maze, the brass god, the storm, the black beams, music | ✅ |
+| v0.3 | Spawn on the ground and glide on limited energy; arcades, courtyards, wall-top walkways | ✅ |
+| v0.4 | The first rooms you can walk into: a ward, a shrine, a clock room | ✅ |
+| v0.5 | Rooms assembled on approach from 31 props, 10 recipes and modifiers; 15 per maze; blood, weeping walls, things that move when you step in | 🚧 |
+| next | Lighter cloud settings for older GPUs, more room modifiers, larger courtyards, rain | ⏳ |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).
 

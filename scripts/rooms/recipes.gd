@@ -13,7 +13,7 @@ extends RefCounted
 ##   ceiling  吊顶的实体和数量
 ##   lining   内衬："plain" 土墙 / "tiles" 瓷砖墙裙和地面
 ##   light    灯："fluor" 日光灯 / "bulb" 吊灯泡 / "red" 暗红灯 / "oculus" 天光 / "surgical" 手术灯 / "warm" 暖光
-##   sound    背景声："buzz" / "hum" / "tick" / "drip" / ""
+##   sound    背景声："buzz" / "hum" / "tick" / "drip" / "musicbox" / ""
 ##   normal   看起来正常的屋子（不加血、不加变异，但总有一处不对劲）
 
 const ALL := [
@@ -38,6 +38,12 @@ const ALL := [
 	{"id": "bath", "sizes": ["small", "big"], "weight": 1.2, "dread": 0.75,
 		"tags": {"clinical": 1.0}, "focal": "", "rows": "bathtub",
 		"hang": 0.3, "floor": 0.3, "ceiling": {}, "lining": "tiles", "light": "fluor", "sound": "drip"},
+	{"id": "nursery", "sizes": ["small", "big"], "weight": 1.3, "dread": 0.7,
+		"tags": {"nursery": 3.0, "domestic": 0.5}, "focal": "", "rows": "crib",
+		"hang": 0.5, "floor": 0.5, "ceiling": {}, "lining": "plain", "light": "bulb", "sound": "musicbox"},
+	{"id": "morgue", "sizes": ["big", "small"], "weight": 1.5, "dread": 0.85,
+		"tags": {"morgue": 3.0, "clinical": 0.5}, "focal": "", "rows": "lockers",
+		"hang": 0.1, "floor": 0.6, "ceiling": {"sheet": 1}, "lining": "tiles", "light": "fluor", "sound": "drip"},
 	{"id": "parlor", "sizes": ["small", "big"], "weight": 1.6, "dread": 0.0, "normal": true,
 		"tags": {"domestic": 3.0}, "focal": "table", "rows": "",
 		"hang": 0.8, "floor": 0.3, "ceiling": {}, "lining": "plain", "light": "warm", "sound": "tick"},
