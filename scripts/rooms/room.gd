@@ -11,6 +11,7 @@ const ArchMesh = preload("res://scripts/arch_mesh.gd")
 const Props = preload("res://scripts/rooms/props.gd")
 const Recipes = preload("res://scripts/rooms/recipes.gd")
 const TilesShader = preload("res://scripts/rooms/tiles.gdshader")
+const WeepShader = preload("res://scripts/rooms/weep.gdshader")
 
 const VIS := 40.0                # 道具的可见距离、灯的淡出距离（米）
 const WALL_STEP := 5.0           # 围墙一格的宽度：每面墙按 5 米分段，门占一段
@@ -32,6 +33,13 @@ var placed: Array[Dictionary] = []   # [{node, place, rect: Rect2（地面占地
 var tickers: Array[Callable] = []
 var t := 0.0
 var dt := 0.0
+# 进门事件用到的东西，实体在 props.gd 里登记进来
+var watchers: Array[Node3D] = []     # 会转过来看着你的：玩偶的头、人台
+var rockers: Array[Node3D] = []      # 会自己摇起来的摇椅
+var drifters: Array[Node3D] = []     # 会自己滑开的轮椅
+var lights: Array[Light3D] = []
+var entered := false
+var inside := false
 
 
 func build() -> void:
@@ -58,8 +66,82 @@ func build() -> void:
 func _process(delta: float) -> void:
 	t += delta
 	dt = delta
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		var p := to_local(cam.global_position)
+		inside = absf(p.x) < size.x / 2.0 - 0.3 and absf(p.z) < size.z / 2.0 - 0.3 and p.y > 0.0 and p.y < size.y
+		if inside and not entered:
+			entered = true
+			_on_enter()
 	for f in tickers:
 		f.call(t)
+
+
+# ---------- 进门事件 ----------
+
+## 第一次走进这间屋子时发生的事，按不安程度挑；正常的屋子里，玩偶一定会转过头来
+func _on_enter() -> void:
+	var normal: bool = recipe.get("normal", false)
+	if not watchers.is_empty() and (normal or rng.randf() < 0.6):
+		_watch()
+	for r in rockers:
+		_rock(r)
+	for d in drifters:
+		if rng.randf() < 0.5:
+			_drift(d)
+	if normal:
+		return
+	if dread > 0.5 and rng.randf() < 0.4:
+		_blackout()
+	if dread > 0.6 and rng.randf() < 0.5:
+		sound(stinger_wav(), Vector3(0, 2.0, 0), -6.0, 4.0)
+
+
+## 它们慢慢转过来，一直对着你
+func _watch() -> void:
+	for w in watchers:
+		var node := w
+		tick(func(_tt: float) -> void:
+			if not inside:
+				return
+			var cam := get_viewport().get_camera_3d()
+			var d := cam.global_position - node.global_position
+			var parent := node.get_parent() as Node3D
+			var local := parent.global_transform.basis.inverse() * d
+			var target := atan2(local.x, local.z)
+			node.rotation.y = lerp_angle(node.rotation.y, target, minf(1.0, dt * 0.8)))
+
+
+## 摇椅自己摇起来，越摇越慢，最后停下
+func _rock(r: Node3D) -> void:
+	var start := t
+	tick(func(tt: float) -> void:
+		var k := tt - start
+		r.rotation.x = 0.14 * sin(k * 2.4) * exp(-k * 0.08))
+
+
+## 轮椅自己往后滑开一小段
+func _drift(d: Node3D) -> void:
+	var from := d.position
+	var to := from - d.basis.z * rng.randf_range(0.4, 0.9)
+	var start := t + rng.randf_range(0.5, 2.0)
+	tick(func(tt: float) -> void:
+		var k := clampf((tt - start) / 3.0, 0.0, 1.0)
+		d.position = from.lerp(to, k * k * (3.0 - 2.0 * k)))
+
+
+## 灯全灭一下：一声闷响，过一会儿再亮
+func _blackout() -> void:
+	for l in lights:
+		l.visible = false
+	sound(thud_wav(), Vector3(0, 1.0, 0), -2.0, 4.0)
+	var back := t + rng.randf_range(0.7, 1.4)
+	var done := [false]
+	tick(func(tt: float) -> void:
+		if not done[0] and tt > back:
+			done[0] = true
+			for l in lights:
+				l.visible = true)
 
 
 func tick(f: Callable) -> void:
@@ -316,7 +398,7 @@ func _lighting() -> void:
 		"fluor":
 			var n := int(size.z / WALL_STEP)
 			for i in n:
-				_fluor(Vector3(0, size.y - 0.6, (i - (n - 1) / 2.0) * WALL_STEP))
+				_fluor(Vector3(0, size.y - 0.6, (i - (n - 1) / 2.0) * WALL_STEP), i == 0)
 		"bulb":
 			_bulb(Color(1.0, 0.72, 0.42), 1.3)
 		"warm":
@@ -336,6 +418,7 @@ func _lighting() -> void:
 			spot.position = Vector3(0, size.y - 0.4, 0)
 			spot.rotation_degrees = Vector3(-90, 0, 0)
 			add_child(spot)
+			lights.append(spot)
 			var lampshade := CylinderMesh.new()
 			lampshade.top_radius = 0.2
 			lampshade.bottom_radius = 0.45
@@ -348,14 +431,14 @@ func _lighting() -> void:
 			Color(0.6, 0.05, 0.03), 0.7, size.x * 0.8)
 
 
-## 日光灯：亮着、一阵阵地闪、早灭了，按不安程度挑
-func _fluor(pos: Vector3) -> void:
+## 日光灯：亮着、一阵阵地闪、早灭了，按不安程度挑；steady 的那盏一定稳稳亮着（屋里至少有一盏能看清）
+func _fluor(pos: Vector3, steady := false) -> void:
 	var housing := mat(Color(0.25, 0.25, 0.23), 0.5, 0.6)
 	var cold := Color(0.78, 0.92, 0.86)
 	box(Vector3(0.02, 0.6, 0.02), pos + Vector3(-0.4, 0.3, 0), housing)
 	box(Vector3(0.02, 0.6, 0.02), pos + Vector3(0.4, 0.3, 0), housing)
 	box(Vector3(1.2, 0.1, 0.24), pos, housing)
-	var roll := rng.randf()
+	var roll := 1.0 if steady else rng.randf()
 	var dead := roll < dread * 0.3
 	var flicker := not dead and roll < dread * 0.8
 	var tube := glow(cold, 0.0 if dead else 2.5)
@@ -415,6 +498,7 @@ func _oculus() -> void:
 	spot.position = Vector3(0, size.y - 0.05, 0)
 	spot.rotation_degrees = Vector3(-90, 0, 0)
 	add_child(spot)
+	lights.append(spot)
 	var fog := FogVolume.new()
 	fog.shape = RenderingServer.FOG_VOLUME_SHAPE_CYLINDER
 	fog.size = Vector3(3.0, size.y, 3.0)
@@ -446,6 +530,8 @@ func _sound() -> void:
 						state["left"] += state["every"]
 						s.pitch_scale = rng.randf_range(0.85, 1.25)
 						s.play())
+		"musicbox":
+			sound(musicbox_wav(), Vector3(rng.randf_range(-1.0, 1.0), 1.0, rng.randf_range(-1.0, 1.0)), -8.0, 2.5)
 		"drip":
 			var dw := drip_wav()
 			var half := size.x / 2.0
@@ -462,21 +548,63 @@ func _sound() -> void:
 
 # ---------- 血 ----------
 
-## 地上几摊、墙上几道往下淌的；越不安越多
+## 越不安越多：地上几摊、一两道拖痕（从屋子中间拖向门或屋角）；墙上往下淌的血痕、手印、计数；
+## 最不安的屋子里还有一两面墙在渗血
 func _blood() -> void:
 	if dread < 0.3:
 		return
 	var half := size.x / 2.0
 	var area := size.x * size.z
+	var layer := [0.03]   # 地上的血一层层略微抬高，免得互相闪烁
+	var floor_at := func(x: float, z: float) -> Vector3:
+		layer[0] += 0.0005
+		return Vector3(x, layer[0], z)
 	for i in int(dread * area / 18.0) + rng.randi_range(0, 2):
-		props.blood(self, Vector3(rng.randf_range(-half + 0.5, half - 0.5), 0.03 + i * 0.0005,
-			rng.randf_range(-half + 0.5, half - 0.5)), rng.randf_range(0.4, 1.5))
+		props.blood(self, floor_at.call(rng.randf_range(-half + 0.5, half - 0.5), rng.randf_range(-half + 0.5, half - 0.5)),
+			rng.randf_range(0.4, 1.5))
+	for i in int(dread * 2.0 * (1.0 if size.x > WALL_STEP else 0.6)):
+		# 拖痕：从屋子中间附近，朝一扇门或一个屋角拖过去
+		var from := Vector3(rng.randf_range(-1.0, 1.0), 0, rng.randf_range(-1.0, 1.0))
+		var to: Vector3 = doors[rng.randi_range(0, doors.size() - 1)] if rng.randf() < 0.5 \
+			else Vector3(signf(rng.randf() - 0.5), 0, signf(rng.randf() - 0.5)) * (half - 0.6)
+		var dir := (to - from).normalized()
+		var w := rng.randf_range(0.5, 0.75)
+		var length := minf((to - from).length(), w * Props.BLOOD_ASPECT[Props.DRAG])
+		var mid := from + dir * length / 2.0
+		props.blood(self, floor_at.call(mid.x, mid.z), w, Props.DRAG, Vector3.UP, atan2(-dir.x, -dir.z) + PI)
+
 	var slots := wall_slots()
 	for i in int(dread * slots.size() * 0.8):
 		var slot: Dictionary = slots[rng.randi_range(0, slots.size() - 1)]
 		var y := rng.randf_range(1.0, size.y - 0.6)
 		props.blood(self, slot["pos"] + slot["along"] * rng.randf_range(-1.8, 1.8) + slot["normal"] * 0.03
-			+ Vector3(0, y, 0), rng.randf_range(0.6, 1.3), 1, slot["normal"])
+			+ Vector3(0, y, 0), rng.randf_range(0.6, 1.3), Props.DRIP, slot["normal"])
+	for i in rng.randi_range(0, int(dread * 4.0)):
+		# 手印：大约一人高，扶着墙往下滑
+		var slot: Dictionary = slots[rng.randi_range(0, slots.size() - 1)]
+		props.blood(self, slot["pos"] + slot["along"] * rng.randf_range(-2.0, 2.0) + slot["normal"] * 0.032
+			+ Vector3(0, rng.randf_range(0.9, 1.4), 0), rng.randf_range(0.2, 0.26), Props.HAND, slot["normal"])
+	if rng.randf() < dread * 0.6:
+		var slot: Dictionary = slots[rng.randi_range(0, slots.size() - 1)]
+		props.blood(self, slot["pos"] + slot["along"] * rng.randf_range(-1.0, 1.0) + slot["normal"] * 0.034
+			+ Vector3(0, rng.randf_range(1.0, 1.7), 0), rng.randf_range(1.2, 2.0), Props.TALLY, slot["normal"])
+	if dread > 0.75:
+		for i in rng.randi_range(1, 2):
+			_weep(slots[rng.randi_range(0, slots.size() - 1)])
+
+
+## 一面墙在渗血：从屋顶下面一点开始，往下一直渗到接近地面
+func _weep(slot: Dictionary) -> void:
+	var q := QuadMesh.new()
+	var h := size.y - 0.4
+	q.size = Vector2(rng.randf_range(2.0, 4.0), h)
+	var sm := ShaderMaterial.new()
+	sm.shader = WeepShader
+	sm.set_shader_parameter("seed", rng.randf() * 100.0)
+	sm.set_shader_parameter("aspect", q.size.y / q.size.x)
+	var nrm: Vector3 = slot["normal"]
+	mesh_at(q, Transform3D(facing(nrm), slot["pos"] + slot["along"] * rng.randf_range(-0.5, 0.5) + nrm * 0.036
+		+ Vector3(0, size.y - 0.2 - h / 2.0, 0)), sm)
 
 
 # ---------- 几何工具 ----------
@@ -602,6 +730,7 @@ func lamp(pos: Vector3, color: Color, energy: float, radius: float, shadows := f
 	_fade(l)
 	l.position = pos
 	(parent if parent else self).add_child(l)
+	lights.append(l)
 	return l
 
 
@@ -674,6 +803,58 @@ func tick_wav() -> AudioStreamWAV:
 	for i in n:
 		var tt := float(i) / rate
 		s[i] = (rng.randf_range(-1.0, 1.0) * 0.5 + sin(TAU * 2600.0 * tt) * 0.5) * exp(-tt * 180.0) * 0.8
+	return wav(s, rate, false)
+
+
+## 八音盒：一段原创的小调旋律，叮叮当当，音准一点点跑偏，越往后越慢，像发条快走完了；约 9 秒一循环
+func musicbox_wav() -> AudioStreamWAV:
+	var rate := 22050
+	var melody := [0, 3, 7, 12, 10, 7, 8, 7, 3, 5, 2, -2, 0, 3, 2, -5]
+	var notes: Array[Vector2] = []   # (开始时间, 频率)
+	var at := 0.0
+	for i in melody.size():
+		var semis: float = melody[i]
+		notes.append(Vector2(at, 659.25 * pow(2.0, semis / 12.0) * (1.0 + 0.012 * sin(i * 1.7))))
+		at += 0.42 + i * 0.018
+	var n := int(rate * (at + 1.0))
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for note in notes:
+		var start := int(note.x * rate)
+		for i in range(start, mini(n, start + int(rate * 1.4))):
+			var tt := float(i - start) / rate
+			var v := sin(TAU * note.y * tt) + 0.35 * sin(TAU * note.y * 2.0 * tt) + 0.15 * sin(TAU * note.y * 4.1 * tt)
+			s[i] += v * exp(-tt * 4.0) * 0.25
+	return wav(s, rate, true)
+
+
+## 不和谐的低音慢慢涌上来又退下去，2.5 秒
+func stinger_wav() -> AudioStreamWAV:
+	var rate := 22050
+	var n := int(rate * 2.5)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var noise := 0.0
+	for i in n:
+		var tt := float(i) / rate
+		var env := smoothstep(0.0, 1.2, tt) * (1.0 - smoothstep(1.6, 2.5, tt))
+		noise = noise * 0.97 + rng.randf_range(-1.0, 1.0) * 0.03
+		var v := sin(TAU * 55.0 * tt) + 0.8 * sin(TAU * 58.3 * tt) + 0.5 * sin(TAU * 82.4 * tt) + 0.4 * sin(TAU * 116.5 * tt)
+		s[i] = (v * 0.25 + noise * 2.0) * env * 0.7
+	return wav(s, rate, false)
+
+
+## 一声闷响：50 Hz 往下沉的重击，0.5 秒
+func thud_wav() -> AudioStreamWAV:
+	var rate := 22050
+	var n := int(rate * 0.5)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var phase := 0.0
+	for i in n:
+		var tt := float(i) / rate
+		phase += TAU * lerpf(70.0, 35.0, tt / 0.5) / rate
+		s[i] = (sin(phase) + rng.randf_range(-0.2, 0.2) * exp(-tt * 30.0)) * exp(-tt * 7.0) * 0.9
 	return wav(s, rate, false)
 
 
