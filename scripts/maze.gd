@@ -8,6 +8,7 @@ const ArchMesh = preload("res://scripts/arch_mesh.gd")
 const WallShader = preload("res://scripts/wall.gdshader")
 const InteriorShader = preload("res://scripts/interior.gdshader")
 const TrimKit = preload("res://assets/models/trim_kit.glb")   # 建筑装饰件，tools/blender/trim_kit.py 生成
+const Landmarks = preload("res://assets/models/landmarks.glb")   # 塔楼和门楼，tools/blender/landmarks.py 生成
 const Room = preload("res://scripts/rooms/room.gd")
 const ROOM_NEAR := 30.0          # 走到离房间中心这么近才把屋里搭出来
 const ROOM_FAR := 60.0           # 走远到这么远再拆掉
@@ -54,6 +55,8 @@ var window_mat: ShaderMaterial
 var trim_mat: ShaderMaterial
 var trim_meshes := {}            # 装饰件名 → 网格（来自 trim_kit.glb）
 var trims := {}                  # 装饰件名 → 这一件的所有摆放位置
+var landmark_meshes := {}        # 地标名 → 网格（来自 landmarks.glb）
+var landmark_mats := {}          # 材质槽名（stone / roof / dark）→ 游戏里的材质
 var window_faces := {}           # 开了拱窗的墙面：Vector4i(x, z, dx, dz)，壁柱避开它们
 var gate_mesh: ArrayMesh
 var window_mesh: ArrayMesh
@@ -117,6 +120,7 @@ func build() -> void:
 	_build_arcades()
 	_build_windows()
 	_build_trim()
+	_build_landmarks()
 	_build_plaza_monoliths()
 	_build_rooms()
 	_build_outer_field()
@@ -159,6 +163,18 @@ func _make_materials() -> void:
 	trim_mat.set_shader_parameter("plaster_color", Color(0.56, 0.52, 0.46))
 	trim_mat.set_shader_parameter("peel", 0.08)
 	trim_mat.set_shader_parameter("crack", 0.35)
+	var lm: Node = Landmarks.instantiate()
+	for c in lm.find_children("*", "MeshInstance3D", true, false):
+		landmark_meshes[String(c.name)] = (c as MeshInstance3D).mesh
+	lm.free()
+	var roof := StandardMaterial3D.new()
+	roof.albedo_color = Color(0.11, 0.11, 0.12)
+	roof.roughness = 0.55
+	roof.metallic = 0.25
+	var hole := StandardMaterial3D.new()
+	hole.albedo_color = Color(0.012, 0.012, 0.014)
+	hole.roughness = 1.0
+	landmark_mats = {"stone": wall_mat, "roof": roof, "dark": hole}
 	var kit: Node = TrimKit.instantiate()
 	for c in kit.find_children("*", "MeshInstance3D", true, false):
 		var mesh: Mesh = (c as MeshInstance3D).mesh
@@ -394,6 +410,51 @@ func _build_platform(x: int, z: int) -> void:
 
 ## 拱门：通道上方横一段墙，下面开拱形门洞；拱门以上一直补到两侧墙顶。
 ## 门墩站在走道里，要有碰撞；拱顶在头顶上方，不用碰撞
+const TOWER_MESH := ["tower_bell", "tower_watch", "tower_spire"]
+const TOWER_SOLID := [25.7, 24.2, 23.6]   # 每种塔楼碰撞做到多高（尖顶不算）
+const LANDMARK_PAD := 1.02       # 地标比一块大一点点，盖住下面的墙柱，免得两个面重合闪烁
+
+
+## 地标：塔楼立在墙角块上，随机转 90° 的倍数；门楼的两个墩子压在通道两侧的墙角上，楼身横跨通道。
+## 碰撞：塔身、门楼的墩子和楼身（楼身下面 7.5 米以内空着，照样走）
+func _build_landmarks() -> void:
+	if landmark_meshes.is_empty():
+		return
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_value + 3
+	var pad := Basis.from_scale(Vector3(LANDMARK_PAD, 1.0, LANDMARK_PAD))
+	for t: Dictionary in gen.towers:
+		var b: Vector2i = t["block"]
+		var base: float = t["base"]
+		var pos := _block_to_world(b.x, b.y) + Vector3(0, base, 0)
+		var rot := Basis(Vector3.UP, PI / 2.0 * r.randi_range(0, 3)) * pad
+		_place_landmark(TOWER_MESH[t["kind"]], Transform3D(rot, pos))
+		var h: float = TOWER_SOLID[t["kind"]]
+		_add_collider(pos + Vector3(0, h / 2.0, 0), Vector3(block, h, block))
+	for g: Dictionary in gen.gatehouses:
+		var b: Vector2i = g["block"]
+		var base: float = g["base"]
+		var pos := _block_to_world(b.x, b.y) + Vector3(0, base, 0)
+		var turn := Basis.IDENTITY if g["along_x"] else Basis(Vector3.UP, PI / 2.0)
+		_place_landmark("gatehouse", Transform3D(turn * pad, pos))
+		var across := turn * Vector3(0, 0, 1)
+		for s: float in [-1.0, 1.0]:
+			_add_collider(pos + across * s * block + Vector3(0, 8.8, 0), Vector3(block, 17.6, block))
+		_add_collider(pos + Vector3(0, 11.55, 0), (turn * Vector3(block, 8.1, block)).abs())
+
+
+func _place_landmark(name: String, xf: Transform3D) -> void:
+	var mesh: Mesh = landmark_meshes[name]
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.transform = xf
+	for i in mesh.get_surface_count():
+		var m := mesh.surface_get_material(i)
+		var key := m.resource_name if m else "stone"
+		mi.set_surface_override_material(i, landmark_mats.get(key, wall_mat))
+	add_child(mi)
+
+
 ## 拱门两面各贴一圈拱石（rot 的 z 是拱门厚度方向）
 func _add_voussoirs(rot: Basis, center: Vector3, depth: float) -> void:
 	if not trims.has("voussoirs"):
@@ -444,7 +505,7 @@ func _build_trim() -> void:
 	for z in range(1, n - 1):
 		for x in range(1, n - 1):
 			var k: int = gen.kind[z][x]
-			if k != MazeGen.WALL and k != MazeGen.PARAPET and k != MazeGen.TERRACE:
+			if k != MazeGen.WALL and k != MazeGen.PARAPET and k != MazeGen.TERRACE or gen.landmark[z][x]:
 				continue
 			var top := _solid_top(x, z)
 			var center := _block_to_world(x, z)
@@ -546,7 +607,7 @@ func _build_windows() -> void:
 	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	for z in range(1, n - 1):
 		for x in range(1, n - 1):
-			if gen.kind[z][x] != MazeGen.WALL or gen.arcade[z][x]:
+			if gen.kind[z][x] != MazeGen.WALL or gen.arcade[z][x] or gen.landmark[z][x]:
 				continue
 			var top: float = gen.wall_top[z][x]
 			for d in dirs:
