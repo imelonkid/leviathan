@@ -14,8 +14,9 @@ extends RefCounted
 ## - 部分层里有深渊区：格子变成悬空平台，通道变成窄桥；
 ## - 部分隔墙降成矮墙，能看见隔壁走道却过不去；
 ## - 部分通道上方架着拱门（通向观景台的门一律是拱门）；
-## - 每层有几个 2×2 格子打通成的方形庭院，围墙一样高，贴墙一段楼梯爬上挑台，
-##   挑台和围墙顶齐平，墙顶就是一圈步道；
+## - 每层有几个 2×2 格子打通成的方形庭院，放得下的层再加一个 3×3 格子的大广场；围墙一样高，
+##   贴墙一段楼梯爬上挑台，挑台和围墙顶齐平，墙顶就是一圈步道；
+## - 同一层的庭院之间，沿着迷宫的墙把一串墙顶降 / 升到和庭院围墙一样高，连成墙顶步道网；
 ## - 每层有一间带屋顶的大房间，四周原有的通道都是拱门门洞；另有十来间小房间（死胡同的格子），
 ##   门是厚墙上的窄拱门。屋里长什么样由 scripts/rooms/ 在玩家走近时按种子组合出来；
 ## - 部分隔墙是拱廊墙：墙身开一排透空的拱洞，看得见隔壁，过不去（庭院围墙上更多）。
@@ -36,6 +37,8 @@ const PARAPET_H := 1.4                 # 矮墙高出地面的高度，跳不过
 const CHASM_COUNT := 2
 const ARCH_CHANCE := 0.3               # 普通通道架拱门的概率
 const COURTYARDS_PER_TIER := 2
+const BIG_COURTS_PER_TIER := 1         # 3×3 格子（5×5 块）的大广场；只有三格宽的层放得下
+const WALKWAY_MAX := 40                # 两个庭院之间的墙顶步道最长多少块，再长就不连
 const COURT_H := STAIR_RISE * 2.0      # 庭院围墙高出地面多少（两块楼梯的升高，8 米）；挑台和墙顶步道也在这个高度
 const ROOM_H := 6.0                    # 大房间屋顶离地高度
 const SMALL_ROOMS := 12                # 小房间（死胡同的格子）的数量
@@ -51,7 +54,9 @@ var link: Array = []              # link[z][x]：楼梯 / 桥的走向（Vector2
 var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对高度（米）
 var arch: Array = []              # arch[z][x]：这条通道上方有拱门
 var arcade: Array = []            # arcade[z][x]：这块墙是拱廊墙（仍算 WALL，只是外观透空）
-var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块）
+var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块；大广场 5×5 块）
+var walkway: Array = []           # walkway[z][x]：这块的顶上是步道（庭院围墙和连接它们的墙），顶高记在 wall_top
+var span: Array = []              # span[z][x]：步道从这条通道上方跨过去——下面仍是通道（两头各一道拱），上面是步道的桥面
 var rooms: Array[Dictionary] = []  # 房间：{rect: Rect2i（大 3×3 块 / 小 1 块）, small: bool, height: 屋顶高, base: 地面高度, doors: 门所在的块}
 var doorway: Array = []           # doorway[z][x]：这条通道是小房间的门——厚墙上开一个窄拱门
 var chasms: Array[Rect2i] = []    # 深渊区，以格子为单位
@@ -70,6 +75,8 @@ func generate(seed_value: int) -> void:
 	arch = _grid(false)
 	arcade = _grid(false)
 	doorway = _grid(false)
+	walkway = _grid(false)
+	span = _grid(false)
 	courtyards.clear()
 	rooms.clear()
 	chasms.clear()
@@ -91,6 +98,7 @@ func generate(seed_value: int) -> void:
 	_make_arcades()
 	_make_small_rooms()
 	_pick_spawn()
+	_make_walkways()
 
 
 ## 格子到中心的距离（切比雪夫距离，按格子计）
@@ -368,20 +376,20 @@ func _assign_wall_heights() -> void:
 				wall_top[z][i] = base + h
 
 
-## 在第 t 层随机找一块 2×2 个格子（3×3 块）的空地，用来做庭院或房间。
+## 在第 t 层随机找一块 size×size 个格子（2×2 格子 = 3×3 块，3×3 格子 = 5×5 块）的空地，用来做庭院或房间。
 ## 它和外面一圈墙里只能有本层平地和墙（避开深渊、楼梯、观景台、最外圈），也不能挨着别的庭院和房间。
 ## 找不到（这一次随机没选中）返回大小为 0 的矩形。
 ## 庭院会把围墙改成 8 米，不能挨着最外圈围墙；房间只会加高围墙，可以（最外一层只有两格宽，不然放不下）
-func _find_square(t: int, allow_border := false) -> Rect2i:
+func _find_square(t: int, allow_border := false, size := 2) -> Rect2i:
 	var c := cells / 2
-	var cx := rng.randi_range(0, cells - 2)
-	var cz := rng.randi_range(0, cells - 2)
-	for dz in 2:
-		for dx in 2:
+	var cx := rng.randi_range(0, cells - size)
+	var cz := rng.randi_range(0, cells - size)
+	for dz in size:
+		for dx in size:
 			var cc := Vector2i(cx + dx, cz + dz)
 			if _cell_tier(cc) != t or (cell_dist(cc.x, cc.y) >= c and not allow_border):
 				return Rect2i()
-	var r := Rect2i(cx * 2 + 1, cz * 2 + 1, 3, 3)
+	var r := Rect2i(cx * 2 + 1, cz * 2 + 1, size * 2 - 1, size * 2 - 1)
 	for z in range(r.position.y - 1, r.end.y + 1):
 		for x in range(r.position.x - 1, r.end.x + 1):
 			var k: int = kind[z][x]
@@ -503,10 +511,13 @@ func _make_small_rooms() -> void:
 func _make_courtyards() -> void:
 	for t in TOP_TIER:
 		var made := 0
-		for attempt in 300:
-			if made >= COURTYARDS_PER_TIER:
+		var big := 0
+		for attempt in 600:
+			if made >= COURTYARDS_PER_TIER + big:
 				break
-			var r := _find_square(t)
+			# 前一半的尝试先找大广场，找不到（这一层太窄）再只放小庭院
+			var want_big := big < BIG_COURTS_PER_TIER and attempt < 300
+			var r := _find_square(t, false, 3 if want_big else 2)
 			if r.size == Vector2i.ZERO:
 				continue
 			var base := t * TIER_H
@@ -534,29 +545,33 @@ func _make_courtyards() -> void:
 			height[top.y][top.x] = base + COURT_H
 			courtyards.append(r)
 			made += 1
+			if want_big:
+				big += 1
 
 
 ## 庭院里楼梯的位置：沿某条边的一排三块，前两块是楼梯、第三块是挑台。
-## 要求这一排外侧的三块围墙和挑台尽头那块围墙都是实墙。找不到返回空数组
+## 要求这一排外侧的三块围墙是实墙；挑台尽头那块如果在院外，也得是实墙（不然原来通进院子的路会被挑台堵住）。
+## 大广场一条边有五块，三块一排可以错开放。找不到返回空数组
 func _court_stair(r: Rect2i) -> Array:
 	var sides: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+	var half := r.size.x / 2
 	var start := rng.randi_range(0, 7)
 	for i in 8:
 		var out: Vector2i = sides[(start + i) % 4]
 		var dir := Vector2i(-out.y, out.x) * (1 if (start + i) / 4 % 2 == 0 else -1)
-		# 这条边上的一排：从起点沿 dir 走三块
-		var mid := r.position + Vector2i(1, 1) + out
-		var p := mid - dir
-		var good := true
-		for k in 3:
-			var q := p + dir * k + out
-			if kind[q.y][q.x] == FLOOR:
+		var mid := r.position + Vector2i(half, half) + out * half
+		for s in range(-half, half - 1):
+			var p := mid + dir * s
+			var good := true
+			for k in 3:
+				var q := p + dir * k + out
+				if kind[q.y][q.x] == FLOOR:
+					good = false
+			var end := p + dir * 3
+			if not r.has_point(end) and kind[end.y][end.x] == FLOOR:
 				good = false
-		var end := p + dir * 3
-		if kind[end.y][end.x] == FLOOR:
-			good = false
-		if good:
-			return [p, dir]
+			if good:
+				return [p, dir]
 	return []
 
 
@@ -609,6 +624,126 @@ func _make_arches() -> void:
 				or kind[z + along.y][x + along.x] == TERRACE
 			if to_terrace or rng.randf() < ARCH_CHANCE:
 				arch[z][x] = true
+
+
+## 墙顶步道：庭院围墙一圈都是，通进院子的路口上方架桥面，围墙顶连成完整的一圈；
+## 同一层的庭院之间，沿着墙（墙角和隔墙）找一条最短的路，路上的墙顶统一改成庭院围墙的高度，
+## 遇到通道就从上面跨过去（span），连成一张步道网。按距离从近到远连，已经连通的不再连。
+## 路只走本层的普通墙和平地通道：不走矮墙、最外圈围墙、房间和小房间门口，也不贴着楼梯、桥、深渊平台
+func _make_walkways() -> void:
+	for r in courtyards:
+		var base := tier_floor(r.position.x, r.position.y)   # 角上可能是楼梯或挑台，往下对齐到层高
+		for z in range(r.position.y - 1, r.end.y + 1):
+			for x in range(r.position.x - 1, r.end.x + 1):
+				var p := Vector2i(x, z)
+				if r.has_point(p):
+					continue
+				if kind[z][x] == WALL:
+					walkway[z][x] = true
+				elif _spannable(p, base):
+					_set_walk(p, base)
+	for t in TOP_TIER:
+		var base := t * TIER_H
+		var courts: Array[Rect2i] = []
+		for r in courtyards:
+			if is_equal_approx(tier_floor(r.position.x, r.position.y), base):
+				courts.append(r)
+		var group := range(courts.size())   # 并查集（只有两三个，直接改标号）
+		var links: Array[Array] = []
+		for i in courts.size():
+			for j in range(i + 1, courts.size()):
+				var path := _wall_path(courts[i], courts[j], base)
+				if not path.is_empty():
+					links.append(path + [i, j])
+		links.sort_custom(func(a: Array, b: Array) -> bool: return a.size() < b.size())
+		for l in links:
+			var j: int = l.pop_back()
+			var i: int = l.pop_back()
+			if group[i] == group[j]:
+				continue
+			var old: int = group[j]
+			for k in group.size():
+				if group[k] == old:
+					group[k] = group[i]
+			for p: Vector2i in l:
+				_set_walk(p, base)
+
+
+func _set_walk(p: Vector2i, base: float) -> void:
+	walkway[p.y][p.x] = true
+	wall_top[p.y][p.x] = base + COURT_H
+	if kind[p.y][p.x] == FLOOR:
+		span[p.y][p.x] = true
+		arch[p.y][p.x] = false
+
+
+## 通道能不能从上面架步道：本层的平地通道（夹在两块墙之间），两头的墙角在，不是小房间的门
+func _spannable(p: Vector2i, base: float) -> bool:
+	if kind[p.y][p.x] != FLOOR or (p.x % 2 == 0) == (p.y % 2 == 0) or doorway[p.y][p.x]:
+		return false
+	if not is_equal_approx(height[p.y][p.x], base):
+		return false
+	var ends := Vector2i(0, 1) if p.x % 2 == 0 else Vector2i(1, 0)
+	var a := p - ends
+	var b := p + ends
+	return kind[a.y][a.x] == WALL and kind[b.y][b.x] == WALL
+
+
+## 从庭院 a 的围墙沿着墙走到庭院 b 的围墙，返回路上（不含两头围墙）的块；走不通或太长返回空数组
+func _wall_path(a: Rect2i, b: Rect2i, base: float) -> Array:
+	var ring_a := a.grow(1)
+	var ring_b := b.grow(1)
+	var prev := {}
+	var dist := {}
+	var queue: Array[Vector2i] = []
+	for z in range(ring_a.position.y, ring_a.end.y):
+		for x in range(ring_a.position.x, ring_a.end.x):
+			var p := Vector2i(x, z)
+			if not a.has_point(p) and kind[z][x] == WALL:
+				dist[p] = 0
+				queue.append(p)
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_front()
+		if ring_b.has_point(p) and not b.has_point(p):
+			var path: Array = []
+			var q: Vector2i = prev.get(p, p)
+			while dist[q] > 0:
+				path.append(q)
+				q = prev[q]
+			return path
+		if dist[p] >= WALKWAY_MAX:
+			continue
+		for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var q := p + d
+			if dist.has(q) or not _walkway_ok(q, base) and not (ring_b.has_point(q) and kind[q.y][q.x] == WALL):
+				continue
+			dist[q] = dist[p] + 1
+			prev[q] = p
+			queue.append(q)
+	return []
+
+
+func _walkway_ok(p: Vector2i, base: float) -> bool:
+	if p.x <= 0 or p.y <= 0 or p.x >= n - 1 or p.y >= n - 1:
+		return false
+	if kind[p.y][p.x] != WALL and not _spannable(p, base):
+		return false
+	for r in courtyards:
+		if r.has_point(p):
+			return false
+	for room: Dictionary in rooms:
+		if (room["rect"] as Rect2i).grow(1).has_point(p):
+			return false
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var x := p.x + dx
+			var z := p.y + dz
+			var k: int = kind[z][x]
+			if k == STAIR or k == BRIDGE or k == PLATFORM or k == VOID:
+				return false
+			if k == FLOOR and not is_equal_approx(height[z][x], base):
+				return false
+	return true
 
 
 ## 从 from 走到 to 要几步（按块计）；走不到返回 -1。
