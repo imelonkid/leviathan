@@ -102,7 +102,7 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 
 ## ⚙️ Graphics settings
 
-The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, footsteps, the Leviathan's hum), and a photo mode that unlocks free flight through walls.
+The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, the Leviathan's hum, sounds in the rooms), and a photo mode that unlocks free flight through walls.
 
 ## 🛠️ Run from source
 
@@ -138,7 +138,7 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 | v0.5 | Rooms assembled on approach from 31 props, 10 recipes and modifiers; 15 per maze; blood, weeping walls, things that move when you step in | ✅ |
 | v0.6 | Rooms that change when you turn your back, two new modifiers, waiting room, classroom and dining room, 37 props | ✅ |
 | v0.7 | A derelict room behind every window (interior-mapping shader), arrow-key look | ✅ |
-| v0.8 | Rain, footsteps, a Leviathan hum you can locate, reverb that follows the space around you | 🚧 |
+| v0.8 | Rain, a Leviathan hum you can locate, reverb that follows the space around you | 🚧 |
 | next | Larger courtyards, connected wall-top walkways, overlapping levels | ⏳ |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).

@@ -1,5 +1,5 @@
 extends Node
-## 声景：利维坦的低鸣（3D 定位，转头听得出它在哪）、脚步声，以及 World 总线的分区混响。
+## 声景：利维坦的低鸣（3D 定位，转头听得出它在哪），以及 World 总线的分区混响。
 ## 雨（rain.gd）、房间里的声音也走 World 总线。混响按周围有多开阔实时调整：
 ## 每 0.2 秒从镜头朝八个方向和头顶各打一条射线——窄走道回声短而亮，庭院大一些，
 ## 高处开阔的观景台几乎没有回声但远处的墙晚一点才回来，头顶有遮挡（门洞、隧道）和屋里小而闷。
@@ -8,9 +8,6 @@ extends Node
 const RATE := 22050
 const PROBE_EVERY := 0.2
 const PROBE_RANGE := 40.0
-const STEP_WALK := 0.75          # 走路时每走这么远响一步（米）
-const STEP_RUN := 1.05
-const RUN_SPEED := 7.0           # 水平速度超过它算奔跑
 const HUM_UNIT := 140.0          # 利维坦低鸣的衰减尺度（米）：越大，远近差别越小
 const HUM_DB := -8.0
 
@@ -21,20 +18,12 @@ var lev: Node3D
 var world_bus := -1
 var reverb: AudioEffectReverb
 var hum: AudioStreamPlayer3D
-var step_player: AudioStreamPlayer
-var steps: Array[AudioStreamWAV] = []
-var rng := RandomNumberGenerator.new()
 var probe_t := 0.0
-var walked := 0.0
-var last_pos := Vector3.ZERO
-var was_on_floor := true
-var fall_speed := 0.0
 var indoor := false              # 镜头在某间房里（rain.gd 也读它）
 var target := {"room": 0.6, "damp": 0.4, "wet": 0.25, "pre": 20.0}
 
 
 func _ready() -> void:
-	rng.randomize()
 	world_bus = AudioServer.get_bus_index("World")
 	if world_bus < 0:
 		AudioServer.add_bus()
@@ -63,14 +52,6 @@ func _ready() -> void:
 	add_child(hum)
 	hum.play()
 
-	for i in 8:
-		steps.append(_step_wav())
-	step_player = AudioStreamPlayer.new()
-	step_player.bus = "World"
-	step_player.max_polyphony = 3
-	add_child(step_player)
-	last_pos = player.global_position
-
 
 func _process(delta: float) -> void:
 	if lev:
@@ -84,33 +65,6 @@ func _process(delta: float) -> void:
 	reverb.damping = lerpf(reverb.damping, target["damp"], k)
 	reverb.wet = lerpf(reverb.wet, target["wet"], k)
 	reverb.predelay_msec = lerpf(reverb.predelay_msec, target["pre"], k)
-
-
-## 脚步：在地上按走过的距离响一步；从高处落地响一声重的
-func _physics_process(_delta: float) -> void:
-	var pos := player.global_position
-	var on_floor: bool = player.is_on_floor() and not player.flying
-	var d := Vector2(pos.x - last_pos.x, pos.z - last_pos.z).length()
-	last_pos = pos
-	if on_floor and not was_on_floor and fall_speed > 4.0:
-		_step(clampf(fall_speed / 8.0, 0.6, 1.4))
-		walked = 0.0
-	was_on_floor = on_floor
-	fall_speed = maxf(-player.velocity.y, 0.0)
-	if not on_floor or d > 2.0:   # d 很大是传送（换迷宫、掉下深渊重生）
-		return
-	walked += d
-	var speed := Vector2(player.velocity.x, player.velocity.z).length()
-	if walked >= (STEP_RUN if speed > RUN_SPEED else STEP_WALK):
-		walked = 0.0
-		_step(1.0 if speed > RUN_SPEED else 0.75)
-
-
-func _step(strength: float) -> void:
-	step_player.stream = steps[rng.randi_range(0, steps.size() - 1)]
-	step_player.pitch_scale = rng.randf_range(0.9, 1.1) * (1.12 if indoor else 1.0)
-	step_player.volume_db = linear_to_db(strength) - 9.0
-	step_player.play()
 
 
 ## 量一下周围：屋里、头顶有遮挡、或者按水平方向平均多远碰到墙
@@ -165,30 +119,6 @@ func _hum_wav() -> AudioStreamWAV:
 			* (0.5 + 0.5 * sin(TAU * 0.25 * t + 1.0))
 		out[i] = (low * beat + shimmer * 0.35) * 0.6
 	return _wav(out, true)
-
-
-## 一步：踩在土和碎石上，一声闷的“噗”加几粒碎石的沙沙声
-func _step_wav() -> AudioStreamWAV:
-	var n := int(RATE * 0.22)
-	var out := PackedFloat32Array()
-	out.resize(n)
-	var lp := 0.0
-	var cut := rng.randf_range(0.15, 0.35)
-	var thump_f := rng.randf_range(55.0, 85.0)
-	var grit_at: Array[int] = []
-	for g in rng.randi_range(2, 5):
-		grit_at.append(rng.randi_range(int(RATE * 0.01), int(RATE * 0.08)))
-	for i in n:
-		var t := float(i) / RATE
-		var env := (1.0 - exp(-t * 900.0)) * exp(-t * 38.0)
-		lp += (rng.randf_range(-1.0, 1.0) - lp) * cut
-		var s := lp * env * 1.6 + sin(TAU * thump_f * t) * exp(-t * 45.0) * 0.5
-		for g in grit_at:
-			var k := i - g
-			if k >= 0 and k < 160:
-				s += rng.randf_range(-1.0, 1.0) * exp(-k / 25.0) * 0.25
-		out[i] = s * 0.8
-	return _wav(out, false)
 
 
 func _wav(samples: PackedFloat32Array, loop: bool) -> AudioStreamWAV:

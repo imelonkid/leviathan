@@ -8,7 +8,7 @@ const RATE := 22050
 const AMOUNT := 3000             # 雨丝数量；乌云低档时减到四成
 const FALL := 22.0               # 雨丝下落速度（米/秒）
 const TICK_RADIUS := 7.0         # 身边的雨点落在多远以内
-const RAIN_DB := -10.0
+const RAIN_DB := -18.0
 
 var settings: Node               # main 注入
 var soundscape: Node
@@ -127,7 +127,7 @@ func _process(delta: float) -> void:
 		return
 	tick_t -= delta
 	if tick_t <= 0.0:
-		tick_t = rng.randf_range(0.06, 0.3) / maxf(level, 0.2)
+		tick_t = rng.randf_range(0.2, 0.7) / maxf(level, 0.2)
 		_tick(cam.global_position)
 
 
@@ -142,7 +142,7 @@ func _tick(around: Vector3) -> void:
 		var is_metal := rng.randf() < 0.25
 		p.stream = metal[rng.randi_range(0, metal.size() - 1)] if is_metal else ticks[rng.randi_range(0, ticks.size() - 1)]
 		p.pitch_scale = rng.randf_range(0.85, 1.2)
-		p.volume_db = rng.randf_range(-14.0, -4.0) - (4.0 if is_metal else 0.0)
+		p.volume_db = rng.randf_range(-24.0, -14.0) - (4.0 if is_metal else 0.0)
 		p.play()
 		return
 
