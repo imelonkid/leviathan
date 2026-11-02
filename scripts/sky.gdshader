@@ -4,6 +4,7 @@
 // 背光的边缘透出银白的亮边，像电影里翻滚的雷暴云墙。
 // 反射用的环境贴图不做步进，只给大致颜色，省下大头的开销。
 // 闪电时（全局参数 lightning）整片云从内部被照亮。
+// 低、中画质由 storm.gd 在 shader_type 下面插入 HALF_RES：云在半分辨率里步进，全分辨率只做合成。
 shader_type sky;
 
 global uniform float lightning;
@@ -22,6 +23,7 @@ uniform float cloud_top = 2400.0;
 uniform float scale = 0.0011;           // 云的尺度：越小云团越大
 uniform float wind = 6.0;               // 云飘动的速度（米/秒）
 uniform int steps = 48;
+uniform int light_steps = 3;            // 每一步朝亮处探几次
 
 float hash3(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -88,9 +90,10 @@ vec4 march(vec3 dir) {
 		float d = density(p, true);
 		if (d > 0.005) {
 			float occ = 0.0;
-			for (int j = 1; j <= 3; j++) {
+			for (int j = 1; j <= light_steps; j++) {
 				occ += density(p + ld * 55.0 * float(j), false);
 			}
+			occ *= 3.0 / float(light_steps);
 			float lit = exp(-occ * 0.9);
 			// 天光：越往云顶越亮，底部压暗，云团才有上下的体积感
 			float hf = (p.y - cloud_bottom) / (cloud_top - cloud_bottom);
@@ -127,7 +130,18 @@ void sky() {
 		// 反射用的环境贴图：不做步进，给个大致的颜色就行
 		COLOR = background(EYEDIR) * 0.6;
 	} else {
+#ifdef HALF_RES
+		if (AT_HALF_RES_PASS) {
+			vec4 c = march(EYEDIR);
+			COLOR = c.rgb;
+			ALPHA = c.a;
+		} else {
+			vec4 c = HALF_RES_COLOR;
+			COLOR = background(EYEDIR) * (1.0 - c.a) + c.rgb;
+		}
+#else
 		vec4 c = march(EYEDIR);
 		COLOR = background(EYEDIR) * (1.0 - c.a) + c.rgb;
+#endif
 	}
 }

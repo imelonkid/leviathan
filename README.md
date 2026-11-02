@@ -102,7 +102,7 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 
 ## ⚙️ Graphics settings
 
-The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), fullscreen, V-Sync, mouse sensitivity, music volume, and a photo mode that unlocks free flight through walls.
+The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, music volume, and a photo mode that unlocks free flight through walls.
 
 ## 🛠️ Run from source
 

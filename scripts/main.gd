@@ -61,6 +61,7 @@ func _ready() -> void:
 	storm.name = "Storm"
 	storm.env = env
 	storm.drone = drone
+	storm.settings = settings
 	storm.center = lev.position
 	add_child(storm)
 

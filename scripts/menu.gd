@@ -46,6 +46,7 @@ func _ready() -> void:
 	_check(box, "glow", "辉光")
 	_slider(box, "shadow_distance", "阴影距离", 60.0, 300.0, 10.0, "%d 米")
 	_slider(box, "render_scale", "渲染分辨率", 0.5, 1.0, 0.05, "%d%%", 100.0)
+	_choice(box, "clouds", "乌云", ["低", "中", "高"])
 	box.add_child(HSeparator.new())
 	_check(box, "fullscreen", "全屏")
 	_check(box, "vsync", "垂直同步")
@@ -107,6 +108,8 @@ func _refresh() -> void:
 		var c: Control = controls[key]
 		if c is CheckBox:
 			(c as CheckBox).set_pressed_no_signal(settings.get_value(key))
+		elif c is OptionButton:
+			(c as OptionButton).select(settings.get_value(key))
 		elif c is HSlider:
 			(c as HSlider).set_value_no_signal(settings.get_value(key))
 			c.get_meta("update").call()
@@ -129,6 +132,15 @@ func _check(box: VBoxContainer, key: String, text: String) -> void:
 	cb.toggled.connect(func(on: bool) -> void: settings.set_value(key, on))
 	controls[key] = cb
 	box.add_child(cb)
+
+
+func _choice(box: VBoxContainer, key: String, text: String, names: Array) -> void:
+	var ob := OptionButton.new()
+	for i in names.size():
+		ob.add_item(names[i], i)
+	ob.item_selected.connect(func(i: int) -> void: settings.set_value(key, i))
+	controls[key] = ob
+	_row(box, text, ob)
 
 
 ## 滑条右侧显示数值；display_mul 用来把内部值换算成好读的数字
