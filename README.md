@@ -51,7 +51,7 @@ Inspired by the image of a "geometric god ruling a labyrinth" in *Hellbound: Hel
 <sub><i>Caught in a beam: color drains away, the edges close in, and a low pressure fills your ears.</i></sub>
 </p>
 
-**Also in the maze:** chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and a flight mode for taking in the whole hell from above.
+**Also in the maze:** chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
 
 ## 📦 Download
 
@@ -71,21 +71,23 @@ Grab the latest build for your platform from **[Releases](https://github.com/ime
 | --- | --- |
 | <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> | Move |
 | <kbd>Mouse</kbd> | Look |
-| <kbd>V</kbd> | Toggle flight (fly through walls, no gravity) |
-| <kbd>Space</kbd> / <kbd>Ctrl</kbd> | Jump · ascend / descend while flying |
-| <kbd>Shift</kbd> | Run · fly faster |
+| <kbd>Space</kbd> | Jump · **hold in the air to rise, release to glide** |
+| <kbd>Shift</kbd> | Run |
 | <kbd>F</kbd> | Lantern |
 | <kbd>M</kbd> | Minimap (on by default) |
 | <kbd>Esc</kbd> | Menu & settings |
 | <kbd>R</kbd> | Generate a new maze |
 | <kbd>F3</kbd> | Debug info (FPS, position, seed) |
 | <kbd>F12</kbd> | Screenshot |
+| <kbd>V</kbd> | Free flight (only with **Photo mode** enabled in the menu) |
 
-You start hovering outside the maze, facing the Leviathan. Press <kbd>V</kbd> to land on the outer terrace, then find your way to the summit plaza right beneath it.
+You start on the outer terrace, looking across the maze at the Leviathan. Your goal, if you want one, is the summit plaza right beneath it.
+
+**Gliding:** rising and gliding drain the energy bar at the bottom of the screen, and walking refills it (about 50 m for a full bar). When it runs out, you drop. You can rise about 13 m above the ground you last stood on: enough to see over the maze walls, not enough to climb the next tier's retaining wall. The stairs are still the way up.
 
 ## ⚙️ Graphics settings
 
-The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), fullscreen, V-Sync, mouse sensitivity, and music volume.
+The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), fullscreen, V-Sync, mouse sensitivity, music volume, and a photo mode that unlocks free flight through walls.
 
 ## 🛠️ Run from source
 

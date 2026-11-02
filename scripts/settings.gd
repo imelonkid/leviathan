@@ -32,6 +32,7 @@ var values := {
 	"vsync": true,
 	"mouse_sens": 0.0025,
 	"music_volume": 0.8,
+	"photo_mode": false,         # V 键自由飞行（穿墙、无重力），截图和看全景用
 }
 
 var env: Environment
