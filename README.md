@@ -42,7 +42,7 @@ Inspired by the image of a "geometric god ruling a labyrinth" in *Hellbound: Hel
 </tr>
 <tr>
 <td><b>Black light.</b> Two beams fire from the Leviathan's waist and turn slowly, like searchlights that swallow light instead of casting it.</td>
-<td><b>A living storm.</b> Ray-marched volumetric clouds, a cloud ring circling the god, and lightning every few seconds, followed by thunder that arrives at the speed of sound. Rain hisses on the stones and pings off railings, goes muffled when you step indoors, and the reverb tightens in narrow streets and opens up on the terraces.</td>
+<td><b>A living storm.</b> Ray-marched volumetric clouds, a cloud ring circling the god, and lightning every few seconds, followed by thunder that arrives at the speed of sound. Rain comes and goes in spells, hisses on the stones and pings off railings, goes muffled when you step indoors, and the reverb tightens in narrow streets and opens up on the terraces.</td>
 </tr>
 </table>
 
