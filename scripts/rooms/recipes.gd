@@ -14,6 +14,8 @@ extends RefCounted
 ##   lining   内衬："plain" 土墙 / "tiles" 瓷砖墙裙和地面
 ##   light    灯："fluor" 日光灯 / "bulb" 吊灯泡 / "red" 暗红灯 / "oculus" 天光 / "surgical" 手术灯 / "warm" 暖光
 ##   sound    背景声："buzz" / "hum" / "tick" / "drip" / "musicbox" / ""
+##   grid     排成方阵、全都朝着“前墙”的实体（可空），例如教室的课桌
+##   front    挂在前墙正中的实体（和 grid 一起用），例如黑板
 ##   normal   看起来正常的屋子（不加血、不加变异，但总有一处不对劲）
 
 const ALL := [
@@ -47,6 +49,15 @@ const ALL := [
 	{"id": "parlor", "sizes": ["small", "big"], "weight": 1.6, "dread": 0.0, "normal": true,
 		"tags": {"domestic": 3.0}, "focal": "table", "rows": "",
 		"hang": 0.8, "floor": 0.3, "ceiling": {}, "lining": "plain", "light": "warm", "sound": "tick"},
+	{"id": "waiting", "sizes": ["big", "small"], "weight": 1.4, "dread": 0.5,
+		"tags": {"waiting": 3.0, "clinical": 1.0}, "focal": "", "rows": "bench",
+		"hang": 0.6, "floor": 0.3, "ceiling": {}, "lining": "tiles", "light": "fluor", "sound": "buzz"},
+	{"id": "classroom", "sizes": ["big", "small"], "weight": 1.4, "dread": 0.6,
+		"tags": {"classroom": 3.0, "nursery": 0.4}, "focal": "", "rows": "", "grid": "desk", "front": "blackboard",
+		"hang": 0.3, "floor": 0.1, "ceiling": {}, "lining": "plain", "light": "bulb", "sound": "tick"},
+	{"id": "dining", "sizes": ["big", "small"], "weight": 1.0, "dread": 0.0, "normal": true,
+		"tags": {"domestic": 3.0}, "focal": "long_table", "rows": "",
+		"hang": 0.7, "floor": 0.15, "ceiling": {}, "lining": "plain", "light": "warm", "sound": "tick"},
 ]
 
 
