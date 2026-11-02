@@ -11,6 +11,8 @@ const DebugHud = preload("res://scripts/debug_hud.gd")
 const Storm = preload("res://scripts/storm.gd")
 const BeamFx = preload("res://scripts/beam_fx.gd")
 const EnergyBar = preload("res://scripts/energy_bar.gd")
+const Soundscape = preload("res://scripts/soundscape.gd")
+const Rain = preload("res://scripts/rain.gd")
 const MUSIC = preload("res://assets/audio/liweitan.mp3")   # 背景音乐，导入设置里已开循环
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
@@ -56,6 +58,19 @@ func _ready() -> void:
 	add_child(drone)
 
 	_setup_music()
+
+	var soundscape := Soundscape.new()
+	soundscape.name = "Soundscape"
+	soundscape.player = player
+	soundscape.maze = maze
+	soundscape.lev = lev
+	add_child(soundscape)
+
+	var rain := Rain.new()
+	rain.name = "Rain"
+	rain.settings = settings
+	rain.soundscape = soundscape
+	add_child(rain)
 
 	var storm := Storm.new()
 	storm.name = "Storm"

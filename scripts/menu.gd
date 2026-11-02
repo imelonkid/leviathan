@@ -53,6 +53,7 @@ func _ready() -> void:
 	_slider(box, "mouse_sens", "鼠标灵敏度", 0.0005, 0.006, 0.0001, "%.1f", 1000.0)
 	_slider(box, "key_look_speed", "方向键转向", 45.0, 240.0, 5.0, "%d°/秒")
 	_slider(box, "music_volume", "音乐音量", 0.0, 1.0, 0.05, "%d%%", 100.0)
+	_slider(box, "ambience_volume", "环境音量", 0.0, 1.0, 0.05, "%d%%", 100.0)
 	_check(box, "photo_mode", "拍照模式：V 自由飞行，穿墙、不耗能量")
 	box.add_child(HSeparator.new())
 
