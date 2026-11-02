@@ -16,7 +16,8 @@ extends RefCounted
 ## - 部分通道上方架着拱门（通向观景台的门一律是拱门）；
 ## - 每层有几个 2×2 格子打通成的方形庭院，围墙一样高，贴墙一段楼梯爬上挑台，
 ##   挑台和围墙顶齐平，墙顶就是一圈步道；
-## - 每层有一间带屋顶的房间（病房 / 神龛 / 钟房），四周原有的通道都是拱门门洞；
+## - 每层有一间带屋顶的大房间，四周原有的通道都是拱门门洞；另有十来间小房间（死胡同的格子），
+##   门是厚墙上的窄拱门。屋里长什么样由 scripts/rooms/ 在玩家走近时按种子组合出来；
 ## - 部分隔墙是拱廊墙：墙身开一排透空的拱洞，看得见隔壁，过不去（庭院围墙上更多）。
 
 enum { WALL, FLOOR, STAIR, BRIDGE, PLATFORM, VOID, PARAPET, TERRACE }
@@ -36,8 +37,9 @@ const CHASM_COUNT := 2
 const ARCH_CHANCE := 0.3               # 普通通道架拱门的概率
 const COURTYARDS_PER_TIER := 2
 const COURT_H := STAIR_RISE * 2.0      # 庭院围墙高出地面多少（两块楼梯的升高，8 米）；挑台和墙顶步道也在这个高度
-const ROOM_THEMES: Array[String] = ["ward", "shrine", "clocks"]   # 病房、神龛、钟房：每层一间，主题不重复
-const ROOM_H := 6.0                    # 房间屋顶离地高度
+const ROOM_H := 6.0                    # 大房间屋顶离地高度
+const SMALL_ROOMS := 12                # 小房间（死胡同的格子）的数量
+const SMALL_ROOM_H := 3.6
 const ARCADE_CHANCE := 0.15            # 隔墙做成拱廊墙的概率
 const COURT_ARCADE_CHANCE := 0.6       # 庭院围墙上的概率
 
@@ -50,7 +52,8 @@ var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对
 var arch: Array = []              # arch[z][x]：这条通道上方有拱门
 var arcade: Array = []            # arcade[z][x]：这块墙是拱廊墙（仍算 WALL，只是外观透空）
 var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块）
-var rooms: Array[Dictionary] = []  # 房间：{rect: Rect2i（3×3 块）, theme: String, base: 地面高度, doors: 门所在的块}
+var rooms: Array[Dictionary] = []  # 房间：{rect: Rect2i（大 3×3 块 / 小 1 块）, small: bool, height: 屋顶高, base: 地面高度, doors: 门所在的块}
+var doorway: Array = []           # doorway[z][x]：这条通道是小房间的门——厚墙上开一个窄拱门
 var chasms: Array[Rect2i] = []    # 深渊区，以格子为单位
 var stairs: Array[Vector2i] = []  # 每段大楼梯最低一块的位置，调试和测试用
 var spawn := Vector2i(1, 1)       # 出生点所在的块
@@ -66,6 +69,7 @@ func generate(seed_value: int) -> void:
 	wall_top = _grid(0.0)
 	arch = _grid(false)
 	arcade = _grid(false)
+	doorway = _grid(false)
 	courtyards.clear()
 	rooms.clear()
 	chasms.clear()
@@ -85,6 +89,7 @@ func generate(seed_value: int) -> void:
 	_make_courtyards()
 	_make_arches()
 	_make_arcades()
+	_make_small_rooms()
 	_pick_spawn()
 
 
@@ -396,12 +401,6 @@ func _find_square(t: int, allow_border := false) -> Rect2i:
 ## 房间：每层一间，同样占 2×2 个格子，有屋顶。原来通进这几个格子的通道全部保留成门（上面架拱门），
 ## 所以迷宫的连通性不变；围墙不开拱廊。里面放什么由 maze.gd 按 theme 交给 scripts/rooms/ 下的脚本
 func _make_rooms() -> void:
-	var themes := ROOM_THEMES.duplicate()
-	for i in themes.size():
-		var j := rng.randi_range(i, themes.size() - 1)
-		var tmp: String = themes[i]
-		themes[i] = themes[j]
-		themes[j] = tmp
 	for t in TOP_TIER:
 		for attempt in 300:
 			var r := _find_square(t, true)
@@ -429,8 +428,73 @@ func _make_rooms() -> void:
 					wall_top[z][x] = maxf(wall_top[z][x], base + ROOM_H + 1.5)
 			for d in doors:
 				arch[d.y][d.x] = true
-			rooms.append({"rect": r, "theme": themes[t % themes.size()], "base": base, "doors": doors})
+			rooms.append({"rect": r, "small": false, "height": ROOM_H, "base": base, "doors": doors})
 			break
+
+
+## 小房间：挑一些死胡同的格子（只有一条通道通进来），盖上屋顶；那条通道变成厚墙上的窄拱门。
+## 死胡同本来就只连一条路，改成房间不影响连通性。四周的矮墙改成实墙，免得屋顶下面漏一圈
+func _make_small_rooms() -> void:
+	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	var candidates: Array[Array] = []
+	for cz in cells:
+		for cx in cells:
+			var b := _cell_block(Vector2i(cx, cz))
+			var t := _cell_tier(Vector2i(cx, cz))
+			if t < 0 or block_dist(b.x, b.y) < BANDS[0] * 2:
+				continue
+			if kind[b.y][b.x] != FLOOR or not is_equal_approx(height[b.y][b.x], t * TIER_H):
+				continue
+			var exits: Array[Vector2i] = []
+			for d in dirs:
+				if is_open(b.x + d.x, b.y + d.y):
+					exits.append(d)
+			if exits.size() != 1:
+				continue
+			var p := b + exits[0]
+			var q := b + exits[0] * 2
+			if kind[p.y][p.x] != FLOOR or kind[q.y][q.x] != FLOOR \
+					or not is_equal_approx(height[p.y][p.x], height[b.y][b.x]) \
+					or not is_equal_approx(height[q.y][q.x], height[b.y][b.x]):
+				continue
+			var taken := false
+			for r in courtyards:
+				if r.grow(1).has_point(b):
+					taken = true
+			for room: Dictionary in rooms:
+				if (room["rect"] as Rect2i).grow(1).has_point(b):
+					taken = true
+			if not taken:
+				candidates.append([b, p])
+	for i in candidates.size():
+		var j := rng.randi_range(i, candidates.size() - 1)
+		var tmp: Array = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = tmp
+
+	var made := 0
+	for c in candidates:
+		if made >= SMALL_ROOMS:
+			break
+		var b: Vector2i = c[0]
+		var p: Vector2i = c[1]
+		var near := false
+		for room: Dictionary in rooms:
+			if room["small"] and ((room["rect"] as Rect2i).position - b).length() < 6.0:
+				near = true
+		if near:
+			continue
+		var base: float = height[b.y][b.x]
+		for z in range(b.y - 1, b.y + 2):
+			for x in range(b.x - 1, b.x + 2):
+				arcade[z][x] = false
+				if kind[z][x] == PARAPET:
+					kind[z][x] = WALL
+					wall_top[z][x] = base + WALL_MIN
+		doorway[p.y][p.x] = true
+		arch[p.y][p.x] = false
+		rooms.append({"rect": Rect2i(b, Vector2i.ONE), "small": true, "height": SMALL_ROOM_H, "base": base, "doors": [p]})
+		made += 1
 
 
 ## 庭院：同一层里 2×2 个格子打通成 3×3 块的方形院子，围墙统一 COURT_H 高。

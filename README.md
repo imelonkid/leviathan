@@ -51,7 +51,7 @@ Inspired by the image of a "geometric god ruling a labyrinth" in *Hellbound: Hel
 <sub><i>Caught in a beam: color drains away, the edges close in, and a low pressure fills your ears.</i></sub>
 </p>
 
-**Also in the maze:** three roofed rooms you can walk into (a ward of iron beds under a flickering tube light, a shrine where a small brass replica of the god hangs in a shaft of light, a room of clocks that all disagree), walled courtyards with stairs up to a walkway along their wall tops, chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
+**Also in the maze:** fifteen rooms you can walk into, each one assembled the moment you approach it from a library of props and a recipe (ward, surgery, shrine, clock room, cell, storeroom, bathroom), soaked in more or less blood depending on how wrong it is meant to feel; some hang upside down from the ceiling, some float, and a few look almost normal, except for the doll on the table facing the door, walled courtyards with stairs up to a walkway along their wall tops, chasms crossed by narrow bridges, waist-high walls that let you see where you can't go, viewing terraces over the lower rings, an endless field of maze fading into fog, and an energy-limited glide for drifting down from the terraces or peeking over the walls.
 
 ## 📦 Download
 
