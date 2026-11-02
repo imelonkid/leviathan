@@ -16,6 +16,7 @@ extends RefCounted
 ## - 部分通道上方架着拱门（通向观景台的门一律是拱门）；
 ## - 每层有几个 2×2 格子打通成的方形庭院，围墙一样高，贴墙一段楼梯爬上挑台，
 ##   挑台和围墙顶齐平，墙顶就是一圈步道；
+## - 每层有一间带屋顶的房间（病房 / 神龛 / 钟房），四周原有的通道都是拱门门洞；
 ## - 部分隔墙是拱廊墙：墙身开一排透空的拱洞，看得见隔壁，过不去（庭院围墙上更多）。
 
 enum { WALL, FLOOR, STAIR, BRIDGE, PLATFORM, VOID, PARAPET, TERRACE }
@@ -35,6 +36,8 @@ const CHASM_COUNT := 2
 const ARCH_CHANCE := 0.3               # 普通通道架拱门的概率
 const COURTYARDS_PER_TIER := 2
 const COURT_H := STAIR_RISE * 2.0      # 庭院围墙高出地面多少（两块楼梯的升高，8 米）；挑台和墙顶步道也在这个高度
+const ROOM_THEMES: Array[String] = ["ward", "shrine", "clocks"]   # 病房、神龛、钟房：每层一间，主题不重复
+const ROOM_H := 6.0                    # 房间屋顶离地高度
 const ARCADE_CHANCE := 0.15            # 隔墙做成拱廊墙的概率
 const COURT_ARCADE_CHANCE := 0.6       # 庭院围墙上的概率
 
@@ -47,6 +50,7 @@ var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对
 var arch: Array = []              # arch[z][x]：这条通道上方有拱门
 var arcade: Array = []            # arcade[z][x]：这块墙是拱廊墙（仍算 WALL，只是外观透空）
 var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块）
+var rooms: Array[Dictionary] = []  # 房间：{rect: Rect2i（3×3 块）, theme: String, base: 地面高度, doors: 门所在的块}
 var chasms: Array[Rect2i] = []    # 深渊区，以格子为单位
 var stairs: Array[Vector2i] = []  # 每段大楼梯最低一块的位置，调试和测试用
 var spawn := Vector2i(1, 1)       # 出生点所在的块
@@ -63,6 +67,7 @@ func generate(seed_value: int) -> void:
 	arch = _grid(false)
 	arcade = _grid(false)
 	courtyards.clear()
+	rooms.clear()
 	chasms.clear()
 	stairs.clear()
 
@@ -76,6 +81,7 @@ func generate(seed_value: int) -> void:
 	_make_chasms()
 	_make_parapets()
 	_assign_wall_heights()
+	_make_rooms()
 	_make_courtyards()
 	_make_arches()
 	_make_arcades()
@@ -357,35 +363,87 @@ func _assign_wall_heights() -> void:
 				wall_top[z][i] = base + h
 
 
+## 在第 t 层随机找一块 2×2 个格子（3×3 块）的空地，用来做庭院或房间。
+## 它和外面一圈墙里只能有本层平地和墙（避开深渊、楼梯、观景台、最外圈），也不能挨着别的庭院和房间。
+## 找不到（这一次随机没选中）返回大小为 0 的矩形。
+## 庭院会把围墙改成 8 米，不能挨着最外圈围墙；房间只会加高围墙，可以（最外一层只有两格宽，不然放不下）
+func _find_square(t: int, allow_border := false) -> Rect2i:
+	var c := cells / 2
+	var cx := rng.randi_range(0, cells - 2)
+	var cz := rng.randi_range(0, cells - 2)
+	for dz in 2:
+		for dx in 2:
+			var cc := Vector2i(cx + dx, cz + dz)
+			if _cell_tier(cc) != t or (cell_dist(cc.x, cc.y) >= c and not allow_border):
+				return Rect2i()
+	var r := Rect2i(cx * 2 + 1, cz * 2 + 1, 3, 3)
+	for z in range(r.position.y - 1, r.end.y + 1):
+		for x in range(r.position.x - 1, r.end.x + 1):
+			var k: int = kind[z][x]
+			if k != FLOOR and k != WALL and k != PARAPET:
+				return Rect2i()
+			if k == FLOOR and not is_equal_approx(height[z][x], t * TIER_H):
+				return Rect2i()
+	for other in courtyards:
+		if r.grow(2).intersects(other):
+			return Rect2i()
+	for room: Dictionary in rooms:
+		if r.grow(2).intersects(room["rect"]):
+			return Rect2i()
+	return r
+
+
+## 房间：每层一间，同样占 2×2 个格子，有屋顶。原来通进这几个格子的通道全部保留成门（上面架拱门），
+## 所以迷宫的连通性不变；围墙不开拱廊。里面放什么由 maze.gd 按 theme 交给 scripts/rooms/ 下的脚本
+func _make_rooms() -> void:
+	var themes := ROOM_THEMES.duplicate()
+	for i in themes.size():
+		var j := rng.randi_range(i, themes.size() - 1)
+		var tmp: String = themes[i]
+		themes[i] = themes[j]
+		themes[j] = tmp
+	for t in TOP_TIER:
+		for attempt in 300:
+			var r := _find_square(t, true)
+			if r.size == Vector2i.ZERO:
+				continue
+			var base := t * TIER_H
+			var doors: Array[Vector2i] = []
+			for z in range(r.position.y - 1, r.end.y + 1):
+				for x in range(r.position.x - 1, r.end.x + 1):
+					if not r.has_point(Vector2i(x, z)) and kind[z][x] == FLOOR:
+						doors.append(Vector2i(x, z))
+			if doors.is_empty():
+				continue
+			for z in range(r.position.y, r.end.y):
+				for x in range(r.position.x, r.end.x):
+					kind[z][x] = FLOOR
+					height[z][x] = base
+			for z in range(r.position.y - 1, r.end.y + 1):
+				for x in range(r.position.x - 1, r.end.x + 1):
+					if r.has_point(Vector2i(x, z)) or kind[z][x] == FLOOR:
+						continue
+					if kind[z][x] == PARAPET:
+						kind[z][x] = WALL
+						wall_top[z][x] = 0.0
+					wall_top[z][x] = maxf(wall_top[z][x], base + ROOM_H + 1.5)
+			for d in doors:
+				arch[d.y][d.x] = true
+			rooms.append({"rect": r, "theme": themes[t % themes.size()], "base": base, "doors": doors})
+			break
+
+
 ## 庭院：同一层里 2×2 个格子打通成 3×3 块的方形院子，围墙统一 COURT_H 高。
 ## 贴着一面围墙放两块楼梯，爬到角上一块和围墙顶齐平的挑台，围墙顶连成一圈步道。
 ## 楼梯和挑台外侧、挑台尽头的围墙必须是实墙，否则原来通进院子的路会被挑台堵住
 func _make_courtyards() -> void:
-	var c := cells / 2
 	for t in TOP_TIER:
 		var made := 0
 		for attempt in 300:
 			if made >= COURTYARDS_PER_TIER:
 				break
-			var cx := rng.randi_range(0, cells - 2)
-			var cz := rng.randi_range(0, cells - 2)
-			var ok := true
-			for dz in 2:
-				for dx in 2:
-					var cc := Vector2i(cx + dx, cz + dz)
-					if _cell_tier(cc) != t or cell_dist(cc.x, cc.y) >= c:
-						ok = false
-			var r := Rect2i(cx * 2 + 1, cz * 2 + 1, 3, 3)
-			# 院子和围墙圈里只能有平地和墙（避开深渊、楼梯、观景台、别的庭院）
-			for z in range(r.position.y - 1, r.end.y + 1):
-				for x in range(r.position.x - 1, r.end.x + 1):
-					var k: int = kind[z][x]
-					if (k != FLOOR and k != WALL and k != PARAPET) or not is_zero_approx(height[z][x] - t * TIER_H) and k == FLOOR:
-						ok = false
-			for other in courtyards:
-				if r.grow(2).intersects(other):
-					ok = false
-			if not ok:
+			var r := _find_square(t)
+			if r.size == Vector2i.ZERO:
 				continue
 			var base := t * TIER_H
 			var stair := _court_stair(r)
@@ -461,6 +519,12 @@ func _make_arcades() -> void:
 			for r in courtyards:
 				if r.grow(1).has_point(Vector2i(x, z)):
 					in_court = true
+			var in_room := false
+			for room: Dictionary in rooms:
+				if (room["rect"] as Rect2i).grow(1).has_point(Vector2i(x, z)):
+					in_room = true
+			if in_room:
+				continue
 			if rng.randf() < (COURT_ARCADE_CHANCE if in_court else ARCADE_CHANCE):
 				arcade[z][x] = true
 

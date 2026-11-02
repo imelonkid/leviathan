@@ -16,6 +16,7 @@ uniform float groove_w = 0.45;       // 刻槽半宽（米）
 uniform float band_period = 34.0;    // 横带间距（米）
 uniform float cell = 7.0;            // 回纹格子（米）
 uniform float bump = 0.5;
+uniform float self_lit = 0.05;      // 自发光：神龛里的小菱形调高一点，屋里太暗
 
 varying vec3 local_pos;
 
@@ -121,7 +122,7 @@ void fragment() {
 
 	ALBEDO = col;
 	// 一点自发光：天空很暗，不然整体沉进背景里；刻槽不发光，纹样更清楚
-	EMISSION = col * 0.05 * (1.0 - g);
+	EMISSION = col * self_lit * (1.0 - g);
 	METALLIC = mix(0.6, 0.2, g);   // 不调太高：天空很暗，全金属会只反射一片黑
 	ROUGHNESS = mix(0.32 + dark * 0.35 + wear * 0.1, 1.0, g);
 	SPECULAR = mix(0.5, 0.0, g);   // 刻槽不反光，否则槽壁会亮成一道道白线

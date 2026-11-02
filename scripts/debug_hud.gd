@@ -46,7 +46,7 @@ func _process(_delta: float) -> void:
 		minimap.queue_redraw()
 
 
-## 右上角的俯视图：地面按高度由暗到亮，楼梯橙色，桥和平台浅蓝，观景台褐色，深渊全黑
+## 右上角的俯视图：地面按高度由暗到亮，楼梯橙色，桥和平台浅蓝，观景台褐色，房间暗红，深渊全黑
 class Minimap extends Control:
 	const SIZE := 280.0
 	const MazeGen = preload("res://scripts/maze_gen.gd")
@@ -89,6 +89,10 @@ class Minimap extends Control:
 					_:
 						continue
 				draw_rect(Rect2(x * cell, z * cell, cell, cell), color)
+		# 房间：暗红色的方块
+		for room: Dictionary in gen.rooms:
+			var r: Rect2i = room["rect"]
+			draw_rect(Rect2(Vector2(r.position) * cell, Vector2(r.size) * cell), Color(0.45, 0.16, 0.12, 0.95))
 		var center := Vector2(n, n) * cell / 2.0
 		draw_circle(center, cell * 1.2, Color(0.6, 0.75, 1.0, 0.8))
 
