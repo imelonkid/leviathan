@@ -73,6 +73,8 @@ class Minimap extends Control:
 				match gen.kind[z][x]:
 					MazeGen.WALL:
 						color = Color(0.55, 0.6, 0.65, 0.9)
+						if gen.arcade[z][x]:
+							color = Color(0.7, 0.66, 0.55, 0.9)
 					MazeGen.PARAPET:
 						color = Color(0.4, 0.42, 0.45, 0.9)
 					MazeGen.TERRACE:

@@ -13,7 +13,10 @@ extends RefCounted
 ## - 每道挡土墙只开两段大楼梯，从低层最里一排爬进高层迷宫，与下一道的楼梯错开 90°；
 ## - 部分层里有深渊区：格子变成悬空平台，通道变成窄桥；
 ## - 部分隔墙降成矮墙，能看见隔壁走道却过不去；
-## - 部分通道上方架着拱门（通向观景台的门一律是拱门）。
+## - 部分通道上方架着拱门（通向观景台的门一律是拱门）；
+## - 每层有几个 2×2 格子打通成的方形庭院，围墙一样高，贴墙一段楼梯爬上挑台，
+##   挑台和围墙顶齐平，墙顶就是一圈步道；
+## - 部分隔墙是拱廊墙：墙身开一排透空的拱洞，看得见隔壁，过不去（庭院围墙上更多）。
 
 enum { WALL, FLOOR, STAIR, BRIDGE, PLATFORM, VOID, PARAPET, TERRACE }
 
@@ -30,6 +33,10 @@ const OUTER_WALL_H := 18.0             # 最外圈围墙
 const PARAPET_H := 1.4                 # 矮墙高出地面的高度，跳不过去（跳跃高度约 1.28 米）
 const CHASM_COUNT := 2
 const ARCH_CHANCE := 0.3               # 普通通道架拱门的概率
+const COURTYARDS_PER_TIER := 2
+const COURT_H := STAIR_RISE * 2.0      # 庭院围墙高出地面多少（两块楼梯的升高，8 米）；挑台和墙顶步道也在这个高度
+const ARCADE_CHANCE := 0.15            # 隔墙做成拱廊墙的概率
+const COURT_ARCADE_CHANCE := 0.6       # 庭院围墙上的概率
 
 var cells := 25
 var n := 0
@@ -38,6 +45,8 @@ var height: Array = []            # height[z][x]：开放块的地面高度（�
 var link: Array = []              # link[z][x]：楼梯 / 桥的走向（Vector2i），楼梯指向上坡
 var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对高度（米）
 var arch: Array = []              # arch[z][x]：这条通道上方有拱门
+var arcade: Array = []            # arcade[z][x]：这块墙是拱廊墙（仍算 WALL，只是外观透空）
+var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块）
 var chasms: Array[Rect2i] = []    # 深渊区，以格子为单位
 var stairs: Array[Vector2i] = []  # 每段大楼梯最低一块的位置，调试和测试用
 var spawn := Vector2i(1, 1)       # 出生点所在的块
@@ -52,6 +61,8 @@ func generate(seed_value: int) -> void:
 	link = _grid(Vector2i.ZERO)
 	wall_top = _grid(0.0)
 	arch = _grid(false)
+	arcade = _grid(false)
+	courtyards.clear()
 	chasms.clear()
 	stairs.clear()
 
@@ -65,7 +76,9 @@ func generate(seed_value: int) -> void:
 	_make_chasms()
 	_make_parapets()
 	_assign_wall_heights()
+	_make_courtyards()
 	_make_arches()
+	_make_arcades()
 	_pick_spawn()
 
 
@@ -102,6 +115,14 @@ func is_open(x: int, z: int) -> bool:
 		return false
 	var k: int = kind[z][x]
 	return k == FLOOR or k == STAIR or k == BRIDGE or k == PLATFORM or k == TERRACE
+
+
+## 站在这块上时“所在层的地面高度”：滑翔的升空上限以它为准。
+## 取地面高度往下对齐到层高，庭院楼梯和挑台、大楼梯中段都算本层，墙顶不是开放块，返回 NAN
+func tier_floor(x: int, z: int) -> float:
+	if not is_open(x, z):
+		return NAN
+	return floorf(height[z][x] / TIER_H + 0.001) * TIER_H
 
 
 ## 块的地面高度（米）；楼梯取中点
@@ -334,6 +355,114 @@ func _assign_wall_heights() -> void:
 			var h := OUTER_WALL_H if border else rng.randf_range(WALL_MIN, WALL_MAX)
 			for i in range(start, x):
 				wall_top[z][i] = base + h
+
+
+## 庭院：同一层里 2×2 个格子打通成 3×3 块的方形院子，围墙统一 COURT_H 高。
+## 贴着一面围墙放两块楼梯，爬到角上一块和围墙顶齐平的挑台，围墙顶连成一圈步道。
+## 楼梯和挑台外侧、挑台尽头的围墙必须是实墙，否则原来通进院子的路会被挑台堵住
+func _make_courtyards() -> void:
+	var c := cells / 2
+	for t in TOP_TIER:
+		var made := 0
+		for attempt in 300:
+			if made >= COURTYARDS_PER_TIER:
+				break
+			var cx := rng.randi_range(0, cells - 2)
+			var cz := rng.randi_range(0, cells - 2)
+			var ok := true
+			for dz in 2:
+				for dx in 2:
+					var cc := Vector2i(cx + dx, cz + dz)
+					if _cell_tier(cc) != t or cell_dist(cc.x, cc.y) >= c:
+						ok = false
+			var r := Rect2i(cx * 2 + 1, cz * 2 + 1, 3, 3)
+			# 院子和围墙圈里只能有平地和墙（避开深渊、楼梯、观景台、别的庭院）
+			for z in range(r.position.y - 1, r.end.y + 1):
+				for x in range(r.position.x - 1, r.end.x + 1):
+					var k: int = kind[z][x]
+					if (k != FLOOR and k != WALL and k != PARAPET) or not is_zero_approx(height[z][x] - t * TIER_H) and k == FLOOR:
+						ok = false
+			for other in courtyards:
+				if r.grow(2).intersects(other):
+					ok = false
+			if not ok:
+				continue
+			var base := t * TIER_H
+			var stair := _court_stair(r)
+			if stair.is_empty():
+				continue
+			for z in range(r.position.y, r.end.y):
+				for x in range(r.position.x, r.end.x):
+					kind[z][x] = FLOOR
+					height[z][x] = base
+			for z in range(r.position.y - 1, r.end.y + 1):
+				for x in range(r.position.x - 1, r.end.x + 1):
+					if not r.has_point(Vector2i(x, z)) and kind[z][x] != FLOOR:
+						kind[z][x] = WALL
+						wall_top[z][x] = base + COURT_H
+			# stair = [第一块, 方向]：两块楼梯，接一块挑台
+			var p: Vector2i = stair[0]
+			var dir: Vector2i = stair[1]
+			for seg in 2:
+				var q := p + dir * seg
+				kind[q.y][q.x] = STAIR
+				link[q.y][q.x] = dir
+				height[q.y][q.x] = base + seg * STAIR_RISE
+			var top := p + dir * 2
+			height[top.y][top.x] = base + COURT_H
+			courtyards.append(r)
+			made += 1
+
+
+## 庭院里楼梯的位置：沿某条边的一排三块，前两块是楼梯、第三块是挑台。
+## 要求这一排外侧的三块围墙和挑台尽头那块围墙都是实墙。找不到返回空数组
+func _court_stair(r: Rect2i) -> Array:
+	var sides: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+	var start := rng.randi_range(0, 7)
+	for i in 8:
+		var out: Vector2i = sides[(start + i) % 4]
+		var dir := Vector2i(-out.y, out.x) * (1 if (start + i) / 4 % 2 == 0 else -1)
+		# 这条边上的一排：从起点沿 dir 走三块
+		var mid := r.position + Vector2i(1, 1) + out
+		var p := mid - dir
+		var good := true
+		for k in 3:
+			var q := p + dir * k + out
+			if kind[q.y][q.x] == FLOOR:
+				good = false
+		var end := p + dir * 3
+		if kind[end.y][end.x] == FLOOR:
+			good = false
+		if good:
+			return [p, dir]
+	return []
+
+
+## 拱廊墙：两侧都是同高平地、两头都是墙角的隔墙，墙身开一排透空拱洞
+func _make_arcades() -> void:
+	for z in range(1, n - 1):
+		for x in range(1, n - 1):
+			if kind[z][x] != WALL or (x % 2 == 0) == (z % 2 == 0):
+				continue
+			var across := Vector2i(1, 0) if x % 2 == 0 else Vector2i(0, 1)
+			var a := Vector2i(x, z) - across
+			var b := Vector2i(x, z) + across
+			if kind[a.y][a.x] != FLOOR or kind[b.y][b.x] != FLOOR \
+					or not is_equal_approx(height[a.y][a.x], height[b.y][b.x]):
+				continue
+			var along := Vector2i(across.y, across.x)
+			var e0 := Vector2i(x, z) - along
+			var e1 := Vector2i(x, z) + along
+			if kind[e0.y][e0.x] != WALL or kind[e1.y][e1.x] != WALL:
+				continue
+			if wall_top[z][x] - height[a.y][a.x] < 6.0:
+				continue
+			var in_court := false
+			for r in courtyards:
+				if r.grow(1).has_point(Vector2i(x, z)):
+					in_court = true
+			if rng.randf() < (COURT_ARCADE_CHANCE if in_court else ARCADE_CHANCE):
+				arcade[z][x] = true
 
 
 ## 拱门：只架在两侧都是墙角的平地通道上（这样拱的两脚有墙可靠）
