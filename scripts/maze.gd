@@ -6,6 +6,12 @@ extends Node3D
 const MazeGen = preload("res://scripts/maze_gen.gd")
 const ArchMesh = preload("res://scripts/arch_mesh.gd")
 const WallShader = preload("res://scripts/wall.gdshader")
+const ROOM_SCRIPTS := {
+	"ward": preload("res://scripts/rooms/ward.gd"),
+	"shrine": preload("res://scripts/rooms/shrine.gd"),
+	"clocks": preload("res://scripts/rooms/clocks.gd"),
+}
+const ROOM_FOG_CUT := -0.02      # 房间里抵消全局体积雾（= main.gd 的 volumetric_fog_density），房间自己要雾再加
 
 const BOTTOM := -60.0            # 墙和地面柱一直延伸到这里，深渊底下是雾
 const KILL_Y := -25.0            # 掉到这个高度以下就重生
@@ -87,6 +93,7 @@ func build() -> void:
 	_build_arcades()
 	_build_windows()
 	_build_plaza_monoliths()
+	_build_rooms()
 	_build_outer_field()
 	_commit(wall_boxes, wall_mat)
 	_commit(floor_boxes, floor_mat)
@@ -355,6 +362,8 @@ func _build_windows() -> void:
 					continue
 				if gen.arch[z + d.y][x + d.x] or r.randf() > WINDOW_CHANCE:
 					continue
+				if _in_room(Vector2i(x + d.x, z + d.y)):
+					continue
 				var f := Vector3(d.x, 0, d.y)
 				var rot := Basis(Vector3.UP.cross(f), Vector3.UP, f)
 				var face := _block_to_world(x, z) + f * (block / 2.0)
@@ -362,6 +371,52 @@ func _build_windows() -> void:
 				while y + WINDOW_SPRING + WINDOW_R + 0.6 < top:
 					windows.append(Transform3D(rot, face + Vector3(0, y, 0)))
 					y += WINDOW_STOREY
+
+
+func _in_room(b: Vector2i) -> bool:
+	for room: Dictionary in gen.rooms:
+		if (room["rect"] as Rect2i).has_point(b):
+			return true
+	return false
+
+
+## 房间：盖屋顶，再用负密度的雾抵消全局体积雾。
+## 屋里的内衬（不吃环境光的墙面、地面、天花板）和东西交给 scripts/rooms/ 下对应主题的脚本
+func _build_rooms() -> void:
+	for i in gen.rooms.size():
+		var room: Dictionary = gen.rooms[i]
+		var r: Rect2i = room["rect"]
+		var base: float = room["base"]
+		var center := _block_to_world(r.position.x + 1, r.position.y + 1)
+		var inner := Vector3(r.size.x * block, MazeGen.ROOM_H, r.size.y * block)
+		_add_box(wall_boxes, center + Vector3(0, base + MazeGen.ROOM_H + 0.3, 0), Vector3(inner.x, 0.6, inner.z))
+
+		var mid := center + Vector3(0, base + inner.y / 2.0, 0)
+
+		var fog := FogVolume.new()
+		fog.size = inner
+		fog.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
+		var fm := FogMaterial.new()
+		fm.density = ROOM_FOG_CUT
+		fog.material = fm
+		add_child(fog)
+		fog.global_position = mid
+
+		var node: Node3D = ROOM_SCRIPTS[room["theme"]].new()
+		node.name = "Room_" + String(room["theme"])
+		node.size = inner
+		node.seed_value = seed_value * 31 + i
+		node.wall_shader = WallShader
+		node.gate_shape = Vector3(GATE_R, GATE_SPRING, GATE_H)
+		for d: Vector2i in room["doors"]:
+			# 门在围墙上：取门洞正中、贴着屋里那一面墙
+			var off := _block_to_world(d.x, d.y) - center
+			off = Vector3(signf(off.x) * inner.x / 2.0 if absf(off.x) > absf(off.z) else off.x, 0,
+				signf(off.z) * inner.z / 2.0 if absf(off.z) > absf(off.x) else off.z)
+			node.doors.append(off)
+		add_child(node)
+		node.global_position = center + Vector3(0, base, 0)
+		node.build()
 
 
 ## 顶层广场四角的方尖柱，给中心一点仪式感
