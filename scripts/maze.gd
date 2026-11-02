@@ -57,6 +57,7 @@ var windows: Array[Transform3D] = []
 var arcades: Array[Transform3D] = []
 var doorways: Array[Transform3D] = []
 var doorway_mesh: ArrayMesh
+var room_visits := {}            # 房间序号 → 会变的屋子变过几次（屋里拆掉后还记着）
 var room_nodes := {}             # 房间序号 → 已经搭出来的屋里（Room 节点）
 var room_check := 0.0
 var body: StaticBody3D
@@ -81,6 +82,7 @@ func build() -> void:
 	arcades.clear()
 	doorways.clear()
 	room_nodes.clear()
+	room_visits.clear()
 
 	body = StaticBody3D.new()
 	add_child(body)
@@ -447,6 +449,8 @@ func _make_room(i: int) -> Node3D:
 	node.name = "Room_%d" % i
 	node.size = Vector3(r.size.x * block, room["height"], r.size.y * block)
 	node.seed_value = seed_value * 131 + i
+	node.visits = room_visits.get(i, 0)
+	node.on_shift = func(v: int) -> void: room_visits[i] = v
 	node.wall_shader = WallShader
 	node.gate_shape = Vector2(DOOR_R, DOOR_SPRING) if room["small"] else Vector2(GATE_R, GATE_SPRING)
 	for d: Vector2i in room["doors"]:

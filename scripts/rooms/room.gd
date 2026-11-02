@@ -1,6 +1,7 @@
 extends Node3D
 ## 一间房的屋里：按种子挑一个配方（recipes.gd），从实体库（props.gd）里挑东西摆进来，再打光、配声音、洒血、加变异。
-## maze.gd 在玩家走近时创建它、调用 build()，走远了拆掉；同一间房的种子不变，所以每次进来都长一样。
+## maze.gd 在玩家走近时创建它、调用 build()，走远了拆掉；同一间房的种子不变，所以每次进来都长一样——
+## 除了“会变的屋子”（SHIFT_CHANCE）：你出了门、背过身去，它就按新的种子整个重搭一遍，变过几次记在 maze 里。
 ## 坐标以房间地面中心为原点，x / z 是 ±size/2，y 从 0（地面）到 size.y（屋顶）。
 ##
 ## 屋里要暗：全局环境光很亮（走道靠它照明），屋里不能吃它。围墙、地面是整座迷宫共用的材质改不了，
@@ -17,12 +18,21 @@ const VIS := 40.0                # 道具的可见距离、灯的淡出距离（
 const WALL_STEP := 5.0           # 围墙一格的宽度：每面墙按 5 米分段，门占一段
 const WALKWAY := 1.0             # 从每扇门到屋子正中留一条这么宽（半宽）的过道
 const MOD_CHANCE := 0.3          # 不安的屋子加一种变异的概率
+const MODIFIERS := ["inverted", "levitate", "repeat", "turning", "giant"]
+const SHIFT_CHANCE := 0.25       # 会变的屋子的比例
+const SHIFT_SEED := 7919         # 每变一次，种子加这么多
+const GIANT := 6.0               # 变异“巨物”：玩偶放大的倍数
+## 变异“转身”：你不看的时候会转过来对着你的东西
+const TURNERS := ["chair", "stool", "wheelchair", "mannequin", "doll", "rocking_chair", "desk", "iv_stand"]
 
 var size := Vector3(15, 6, 15)   # maze 注入：屋里的长、高、宽
 var doors: Array[Vector3] = []   # maze 注入：门洞正中，贴在屋里那一面墙上（y = 0）
 var seed_value := 0
 var wall_shader: Shader          # maze 注入：土墙着色器，内衬用它的“不吃环境光”版本
 var gate_shape := Vector2(1.7, 3.2)   # maze 注入：门洞拱的半宽、起拱高度
+var visits := 0                  # maze 注入：会变的屋子已经变过几次
+var on_shift: Callable           # maze 注入：变了一次，交给 maze 记下新的次数
+var shifting := false
 
 var rng := RandomNumberGenerator.new()
 var recipe: Dictionary
@@ -40,15 +50,20 @@ var drifters: Array[Node3D] = []     # 会自己滑开的轮椅
 var lights: Array[Light3D] = []
 var entered := false
 var inside := false
+var busy_slots: Array[Vector3] = []   # 被前墙的大件（黑板）占掉的墙段，不再往上挂、往下靠
 
 
 func build() -> void:
-	rng.seed = seed_value
+	# 会不会变用单独的随机数定，不影响原来的种子序列：不会变的屋子和以前长得一样
+	var fate := RandomNumberGenerator.new()
+	fate.seed = seed_value
+	shifting = fate.randf() < SHIFT_CHANCE
+	rng.seed = seed_value + visits * SHIFT_SEED
 	recipe = Recipes.pick(rng, size.x < WALL_STEP * 2.0)
 	var normal: bool = recipe.get("normal", false)
 	dread = 0.0 if normal else clampf(recipe["dread"] + rng.randf_range(-0.1, 0.1), 0.0, 1.0)
 	if not normal and dread >= 0.3 and rng.randf() < MOD_CHANCE:
-		modifier = ["inverted", "levitate", "repeat"][rng.randi_range(0, 2)]
+		modifier = MODIFIERS[rng.randi_range(0, MODIFIERS.size() - 1)]
 	props = Props.new(self, rng, dread)
 	name = "Room_%s%s" % [recipe["id"], "_" + modifier if modifier else ""]
 
@@ -73,8 +88,39 @@ func _process(delta: float) -> void:
 		if inside and not entered:
 			entered = true
 			_on_enter()
+		elif shifting and entered and not inside and _turned_away(cam):
+			_shift()
+			return
 	for f in tickers:
 		f.call(t)
+
+
+## 出了屋子、背对着它：离屋子中心够远，而且屋子在身后
+func _turned_away(cam: Camera3D) -> bool:
+	var to_room := global_position + Vector3(0, size.y / 2.0, 0) - cam.global_position
+	if to_room.length() < size.x / 2.0 + 2.0:
+		return false
+	return (-cam.global_basis.z).dot(to_room.normalized()) < -0.2
+
+
+## 整间屋子按新的种子重搭：拆掉屋里的一切，换配方、换摆设、换变异，进门事件重新来一遍
+func _shift() -> void:
+	visits += 1
+	if on_shift.is_valid():
+		on_shift.call(visits)
+	for c in get_children():
+		c.queue_free()
+	placed.clear()
+	tickers.clear()
+	watchers.clear()
+	rockers.clear()
+	drifters.clear()
+	lights.clear()
+	busy_slots.clear()
+	modifier = ""
+	entered = false
+	inside = false
+	build()
 
 
 # ---------- 进门事件 ----------
@@ -82,8 +128,10 @@ func _process(delta: float) -> void:
 ## 第一次走进这间屋子时发生的事，按不安程度挑；正常的屋子里，玩偶一定会转过头来
 func _on_enter() -> void:
 	var normal: bool = recipe.get("normal", false)
-	if not watchers.is_empty() and (normal or rng.randf() < 0.6):
+	if not watchers.is_empty() and (normal or modifier == "giant" or rng.randf() < 0.6):
 		_watch()
+	if modifier == "turning":
+		_turn_when_unseen()
 	for r in rockers:
 		_rock(r)
 	for d in drifters:
@@ -110,6 +158,23 @@ func _watch() -> void:
 			var local := parent.global_transform.basis.inverse() * d
 			var target := atan2(local.x, local.z)
 			node.rotation.y = lerp_angle(node.rotation.y, target, minf(1.0, dt * 0.8)))
+
+
+## 变异“转身”：椅子、人台、玩偶……你看不见的那些，转过来对着你
+func _turn_when_unseen() -> void:
+	var turners: Array[Node3D] = []
+	for p in placed:
+		if p.get("id", "") in TURNERS:
+			turners.append(p["node"])
+	tick(func(_tt: float) -> void:
+		if not inside:
+			return
+		var cam := get_viewport().get_camera_3d()
+		var fwd := -cam.global_basis.z
+		for n in turners:
+			var to := n.global_position - cam.global_position
+			if fwd.dot(to.normalized()) < 0.2:
+				n.basis = facing(to_local(cam.global_position) - n.position))
 
 
 ## 摇椅自己摇起来，越摇越慢，最后停下
@@ -191,8 +256,12 @@ func _layout() -> void:
 	var half := size.x / 2.0
 	if modifier == "repeat":
 		_repeat_grid()
+	elif modifier == "giant":
+		_giant()
 	elif recipe["focal"] != "":
 		_put(recipe["focal"], Vector3.ZERO, _toward_door(Vector3.ZERO), true)
+	if modifier != "repeat" and recipe.get("grid", "") != "":
+		_grid(recipe["grid"], recipe.get("front", ""))
 
 	# 屋角：两边都不是门的角，一半概率放个立在角上的
 	for corner: Vector3 in [Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(1, 0, -1), Vector3(-1, 0, -1)]:
@@ -210,6 +279,8 @@ func _layout() -> void:
 		if recipe["rows"] != "":
 			_rows(recipe["rows"])
 		for slot in wall_slots():
+			if slot["pos"] in busy_slots:
+				continue
 			if rng.randf() < 0.55:
 				var id := _pick("wall")
 				if id != "":
@@ -248,6 +319,56 @@ func _rows(id: String) -> void:
 			_put_on_wall(id, slot, (i - (k - 1) / 2.0) * step)
 
 
+## 方阵（教室的课桌）：挑一面没有门的墙当前墙，前墙正中挂 front，课桌一排排朝着它
+func _grid(id: String, front_id: String) -> void:
+	var half := size.x / 2.0
+	var dirs: Array[Vector3] = [Vector3(0, 0, -1), Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(1, 0, 0)]
+	var front := dirs[rng.randi_range(0, 3)]
+	for k in 4:
+		var d := dirs[(dirs.find(front) + k) % 4]
+		var free := true
+		for door in doors:
+			if door.dot(d) > half - 0.5:
+				free = false
+		if free:
+			front = d
+			break
+	if front_id != "":
+		var best: Dictionary = {}
+		for slot in wall_slots():
+			if (slot["normal"] as Vector3).dot(-front) > 0.9 and (best.is_empty() \
+					or (slot["pos"] as Vector3).length() < (best["pos"] as Vector3).length()):
+				best = slot
+		if not best.is_empty():
+			var nrm: Vector3 = best["normal"]
+			var board := props.make(front_id)
+			board.transform = Transform3D(facing(nrm), best["pos"] + Vector3(0, 1.7, 0) + nrm * 0.03)
+			add_child(board)
+			placed.append({"node": board, "place": "hang", "id": front_id})
+			busy_slots.append(best["pos"])
+	var foot: Vector2 = Props.ENTITIES[id]["foot"]
+	var side := front.cross(Vector3.UP)
+	var dist := half - 2.2 - foot.y / 2.0
+	while dist > -half + foot.y / 2.0 + 0.4:
+		var across := -half + 0.6 + foot.x / 2.0
+		while across < half - 0.6 - foot.x / 2.0 + 0.01:
+			var pos := front * dist + side * across
+			if rng.randf() > 0.08:   # 偶尔空一个座位
+				_put(id, pos, front)
+			across += foot.x + 0.9
+		dist -= foot.y + 0.9
+
+
+## 变异“巨物”：屋子正中坐着一个两人高的玩偶，一直看着你
+func _giant() -> void:
+	var n := props.make("doll")
+	n.transform = Transform3D(facing(_toward_door(Vector3.ZERO)).scaled(Vector3.ONE * GIANT), Vector3.ZERO)
+	props.solid(n, Vector3(0.3, 0.4, 0.3), Vector3(0, 0.2, 0))
+	add_child(n)
+	var r := 0.3 * GIANT / 2.0
+	placed.append({"node": n, "place": "center", "rect": Rect2(-r, -r, r * 2.0, r * 2.0), "focal": true, "id": "doll"})
+
+
 ## 变异“重复”：同一件东西整整齐齐排满一屋子，全都朝着门
 func _repeat_grid() -> void:
 	var ids: Array[String] = ["chair", "bed", "doll", "cage", "bucket", "candles"]
@@ -268,6 +389,8 @@ func _repeat_grid() -> void:
 ## 墙上挂的：每段墙按密度挂几件，高度错开，避开下面高大的家具
 func _hangings() -> void:
 	for slot in wall_slots():
+		if slot["pos"] in busy_slots:
+			continue
 		var n := int(recipe["hang"] * rng.randf_range(0.5, 1.5) + rng.randf())
 		var used: Array[Vector3] = []   # (沿墙位置, 高度, 半径)
 		var nrm: Vector3 = slot["normal"]
@@ -327,7 +450,7 @@ func _put(id: String, pos: Vector3, face: Vector3, force := false) -> bool:
 	var node := props.make(id)
 	node.transform = Transform3D(basis, pos)
 	add_child(node)
-	placed.append({"node": node, "place": e["place"], "rect": rect, "focal": force})
+	placed.append({"node": node, "place": e["place"], "rect": rect, "focal": force, "id": id})
 	return true
 
 
@@ -361,11 +484,13 @@ func _pick(place: String) -> String:
 ## 正常的屋子总有一处不对劲：一只玩偶坐在屋子正中（或桌上），直直地对着门
 func _wrong_detail() -> void:
 	var n := props.make("doll")
-	var y := 0.0
+	var pos := Vector3.ZERO
 	for p in placed:
 		if p.get("focal", false):
-			y = 0.79   # 正常屋子的焦点是桌子：坐在桌面正中
-	n.transform = Transform3D(facing(_toward_door(Vector3.ZERO)), Vector3(0, y, 0))
+			# 正常屋子的焦点是桌子：坐在桌面上；长餐桌正中是烛台，坐到一边去
+			var table: Node3D = p["node"]
+			pos = table.transform * (Vector3(0.6, 0.8, 0) if p["id"] == "long_table" else Vector3(0, 0.79, 0))
+	n.transform = Transform3D(facing(_toward_door(pos)), pos)
 	add_child(n)
 
 
@@ -380,6 +505,19 @@ func _apply_modifier() -> void:
 				if p["place"] in ["wall", "floor", "center", "corner"]:
 					var n: Node3D = p["node"]
 					n.transform = flip * n.transform
+		"turning":
+			# 屋里得有几件会转身的：不够就添几把椅子，背对着门
+			var n := 0
+			for p in placed:
+				if p.get("id", "") in TURNERS:
+					n += 1
+			var half := size.x / 2.0
+			for attempt in 30:
+				if n >= 3:
+					break
+				var pos := Vector3(rng.randf_range(-half + 0.8, half - 0.8), 0, rng.randf_range(-half + 0.8, half - 0.8))
+				if _put("chair", pos, -_toward_door(pos)):
+					n += 1
 		"levitate":
 			# 东西离地悬着，慢慢上下浮动，各自的节奏不一样
 			for p in placed:
