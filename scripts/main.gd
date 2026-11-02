@@ -10,11 +10,10 @@ const Menu = preload("res://scripts/menu.gd")
 const DebugHud = preload("res://scripts/debug_hud.gd")
 const Storm = preload("res://scripts/storm.gd")
 const BeamFx = preload("res://scripts/beam_fx.gd")
+const EnergyBar = preload("res://scripts/energy_bar.gd")
 const MUSIC = preload("res://assets/audio/liweitan.mp3")   # 背景音乐，导入设置里已开循环
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
-const VANTAGE_HEIGHT := 55.0     # 开局悬停的高度：在外圈围墙外，仰望利维坦和风暴
-const VANTAGE_OUT := 45.0        # 离迷宫外沿多远
 
 var settings: Node
 var env: Environment
@@ -47,6 +46,7 @@ func _ready() -> void:
 	player = Player.new()
 	player.name = "Player"
 	player.settings = settings
+	player.maze = maze
 	add_child(player)
 	_spawn_player()
 
@@ -70,6 +70,10 @@ func _ready() -> void:
 	debug.maze = maze
 	debug.player = player
 	add_child(debug)
+
+	var bar := EnergyBar.new()
+	bar.player = player
+	add_child(bar)
 
 	beam_fx = BeamFx.new()
 	beam_fx.player = player
@@ -134,16 +138,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_screenshot()
 
 
-## 开局悬停在迷宫外的半空中，正对利维坦和风暴，整座地狱尽收眼底；按 V 落地。
-## 落地点（以及掉出迷宫后的重生点）是最外一圈观景台
+## 出生在最外一圈观景台上（离中心约 100 米），正对矮墙“观景窗”和远处的利维坦，满能量
 func _spawn_player() -> void:
-	player.set_flying(true)
+	player.set_flying(false)
 	player.velocity = Vector3.ZERO
-	var half: float = maze.n * maze.block / 2.0
-	player.global_position = Vector3(0, VANTAGE_HEIGHT, half + VANTAGE_OUT)
-	player.last_safe = maze.get_spawn_position()
-	player.look_at(Vector3(0, VANTAGE_HEIGHT, 0), Vector3.UP)
-	player.head.rotation.x = deg_to_rad(34)
+	var spawn: Vector3 = maze.get_spawn_position()
+	player.global_position = spawn
+	player.last_safe = spawn
+	player.ground_y = spawn.y
+	player.energy = 1.0
+	player.look_at(Vector3(0, spawn.y, 0), Vector3.UP)
+	player.head.rotation.x = deg_to_rad(28)
 
 
 ## 截图存到 user://screenshots/，文件名带时间
@@ -228,7 +233,7 @@ func _setup_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var label := Label.new()
-	label.text = "V 飞行 / 落地 · WASD 移动 · 空格 / Ctrl 升降 · Shift 加速 · F 提灯 · M 地图 · Esc 菜单"
+	label.text = "WASD 移动 · Shift 奔跑 · 空格 跳跃，空中按住升空、松开滑翔 · F 提灯 · M 地图 · Esc 菜单"
 	label.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85, 0.85))
 	label.add_theme_font_size_override("font_size", 18)
 	label.position = Vector2(24, 20)
