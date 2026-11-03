@@ -22,6 +22,7 @@ var env: Environment
 var lev: Node3D
 var drone: Node
 var beam_fx: CanvasLayer
+var soundscape: Node
 var music: AudioStreamPlayer
 var maze: Node3D
 var player: CharacterBody3D
@@ -59,7 +60,7 @@ func _ready() -> void:
 
 	_setup_music()
 
-	var soundscape := Soundscape.new()
+	soundscape = Soundscape.new()
 	soundscape.name = "Soundscape"
 	soundscape.player = player
 	soundscape.maze = maze
@@ -109,11 +110,12 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 
-## 镜头被黑光扫中：画面压黑、声音压迫，音乐也被压下去
+## 镜头被黑光扫中：画面压黑、声音压迫，音乐也被压下去，周围的声音被吸走
 func _process(_delta: float) -> void:
 	var e: float = lev.beam_exposure(player.cam.global_position)
 	beam_fx.intensity = e
 	drone.pressure = e
+	soundscape.hush = e
 	music.volume_db = linear_to_db(1.0 - beam_fx.level * 0.75)
 
 

@@ -9,15 +9,15 @@ const PATH := "user://settings.cfg"
 const PRESETS := {
 	"low": {
 		"volumetric_fog": false, "ssao": false, "glow": true,
-		"shadow_distance": 120.0, "render_scale": 0.67, "clouds": 0,
+		"shadow_distance": 120.0, "render_scale": 0.67, "clouds": 0, "reflections": false,
 	},
 	"medium": {
 		"volumetric_fog": true, "ssao": false, "glow": true,
-		"shadow_distance": 180.0, "render_scale": 0.85, "clouds": 1,
+		"shadow_distance": 180.0, "render_scale": 0.85, "clouds": 1, "reflections": false,
 	},
 	"high": {
 		"volumetric_fog": true, "ssao": true, "glow": true,
-		"shadow_distance": 250.0, "render_scale": 1.0, "clouds": 2,
+		"shadow_distance": 250.0, "render_scale": 1.0, "clouds": 2, "reflections": true,
 	},
 }
 
@@ -28,6 +28,7 @@ var values := {
 	"glow": true,
 	"shadow_distance": 250.0,
 	"render_scale": 1.0,
+	"reflections": true,         # 水洼倒影：屏幕空间反射，水洼里看得见墙和天上的东西
 	"clouds": 2,                 # 乌云质量：0 低（半分辨率、少步进、没有云环）/ 1 中 / 2 高
 	"fullscreen": false,
 	"vsync": true,
@@ -79,6 +80,8 @@ func apply() -> void:
 		env.volumetric_fog_enabled = values["volumetric_fog"]
 		env.ssao_enabled = values["ssao"]
 		env.glow_enabled = values["glow"]
+		env.ssr_enabled = values["reflections"]
+		env.ssr_max_steps = 48
 	if sun:
 		sun.directional_shadow_max_distance = values["shadow_distance"]
 

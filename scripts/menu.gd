@@ -44,6 +44,7 @@ func _ready() -> void:
 	_check(box, "volumetric_fog", "体积雾（关闭后黑光几乎不可见）")
 	_check(box, "ssao", "环境光遮蔽 SSAO")
 	_check(box, "glow", "辉光")
+	_check(box, "reflections", "水洼倒影（屏幕空间反射）")
 	_slider(box, "shadow_distance", "阴影距离", 60.0, 300.0, 10.0, "%d 米")
 	_slider(box, "render_scale", "渲染分辨率", 0.5, 1.0, 0.05, "%d%%", 100.0)
 	_choice(box, "clouds", "乌云", ["低", "中", "高"])
