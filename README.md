@@ -142,7 +142,7 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 | v0.9 | 25 m plazas and a connected wall-top walkway network that bridges over the streets | ✅ |
 | v0.10 | Architectural trim modeled in Blender: coping, plinths, corner pilasters, voussoir arches | ✅ |
 | v0.11 | Landmarks: bell towers, watchtowers, spires and gatehouses rising above the walls; flying bridges over the lower streets, one with a hanging stair, two broken off in mid-air; a bridge across each plaza at walkway height with a floating stair up to it | ✅ |
-| v0.12 | Atmosphere: puddles that come and go with the rain; the black light swallows the sound around you; dust, falling grit and lightning that leaves an afterglow | 🚧 |
+| v0.12 | Atmosphere: puddles that come and go with the rain; the black light swallows the sound around you; falling ash you only see in the light, grit trickling off the walls, and lightning that leaves an afterglow | ✅ |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).
 
