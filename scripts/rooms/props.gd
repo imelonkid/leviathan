@@ -1,5 +1,6 @@
 extends RefCounted
-## 实体库：房间里能摆的东西，每样是一个用方块和圆柱拼出来的小模型。
+## 实体库：房间里能摆的东西。一部分是 Blender 脚本建的模型（tools/blender/room_props.py → room_props.glb），
+## 其余的还是用方块和圆柱拼出来的小模型。
 ## 每个实体登记在 ENTITIES 里：放哪（place）、占地多大（foot：宽 × 深，米）、带什么气质（tags）。
 ## 房间配方（recipes.gd）按气质给权重挑实体，room.gd 负责摆放；这里只管“一件东西长什么样”。
 ##
@@ -9,6 +10,7 @@ extends RefCounted
 
 const BodyShader = preload("res://scripts/leviathan.gdshader")
 const BloodShader = preload("res://scripts/rooms/blood.gdshader")
+const PropModels = preload("res://assets/models/room_props.glb")
 
 ## place：wall = 靠墙放在地上；floor = 地上随便放；center = 屋子正中（焦点）；
 ## corner = 屋角；hang = 挂在墙上；ceiling = 吊在天花板下
@@ -56,6 +58,7 @@ var room: Node3D                 # Room：提供 box() / mesh_at() / mat() / glo
 var rng: RandomNumberGenerator
 var dread := 0.5
 var m := {}                      # 材质
+static var models := {}          # 模型名 → 网格（来自 room_props.glb），第一次用时读一遍
 
 
 func _init(r: Node3D, generator: RandomNumberGenerator, d: float) -> void:
@@ -88,6 +91,22 @@ func make(id: String) -> Node3D:
 	n.name = id
 	call("_" + id, n)
 	return n
+
+
+## 摆一件 Blender 建的模型：材质槽按名字套 m 里的材质，frame 槽给传进来的那份（铁或锈）
+func model(name: String, parent: Node3D, frame: Material = null, xf := Transform3D.IDENTITY) -> MeshInstance3D:
+	if models.is_empty():
+		var scene: Node = PropModels.instantiate()
+		for c in scene.find_children("*", "MeshInstance3D", true, false):
+			models[String(c.name)] = (c as MeshInstance3D).mesh
+		scene.free()
+	var mesh: Mesh = models[name]
+	var mi: MeshInstance3D = room.mesh_at(mesh, xf, null, parent)
+	for i in mesh.get_surface_count():
+		var src := mesh.surface_get_material(i)
+		var key := src.resource_name if src else "cloth"
+		mi.set_surface_override_material(i, frame if key == "frame" and frame else m.get(key, m["cloth"]))
+	return mi
 
 
 ## 锈不锈：越不安越容易是锈的
@@ -128,29 +147,17 @@ func solid(n: Node3D, sz: Vector3, center: Vector3) -> void:
 
 # ---------- 靠墙的 ----------
 
-## 铁床：床头（-z）顶着墙；有的没床垫，不安的床垫上有血
+## 铁床：床头（-z）顶着墙，弯管床头床尾；有的没床垫，不安的床垫上有血
 func _bed(n: Node3D) -> void:
-	var frame := _metal()
-	var hl := 1.0
-	var hw := 0.45
-	for sx: float in [-hw, hw]:
-		for sz: float in [-hl, hl]:
-			room.box(Vector3(0.05, 0.5, 0.05), Vector3(sx, 0.25, sz), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.05, 0.06, 2.0), Vector3(sx, 0.45, 0), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.05, 1.1, 0.05), Vector3(sx, 0.55, -hl), frame, false, Basis.IDENTITY, n)
-	for y: float in [0.75, 1.05]:
-		room.box(Vector3(0.9, 0.04, 0.04), Vector3(0, y, -hl), frame, false, Basis.IDENTITY, n)
-	for i in 5:
-		room.box(Vector3(0.025, 0.3, 0.025), Vector3(-hw + 0.9 * (i + 1) / 6.0, 0.9, -hl), frame, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.9, 0.04, 0.04), Vector3(0, 0.7, hl), frame, false, Basis.IDENTITY, n)
+	model("bed_frame", n, _metal())
 	if rng.randf() < 0.8:
-		room.box(Vector3(0.84, 0.16, 1.9), Vector3(0, 0.56, 0), m["cloth"], false, Basis.IDENTITY, n)
+		model("bed_mattress", n)
 		if rng.randf() < dread:
-			blood(n, Vector3(rng.randf_range(-0.2, 0.2), 0.645, rng.randf_range(-0.5, 0.5)), rng.randf_range(0.5, 0.9))
+			blood(n, Vector3(rng.randf_range(-0.2, 0.2), 0.632, rng.randf_range(-0.3, 0.5)), rng.randf_range(0.5, 0.9))
 		# 带子：不安的床上有绑带
 		if rng.randf() < dread * 0.6:
 			for z: float in [-0.3, 0.5]:
-				room.box(Vector3(0.9, 0.02, 0.07), Vector3(0, 0.65, z), m["black"], false, Basis.IDENTITY, n)
+				room.box(Vector3(0.9, 0.02, 0.07), Vector3(0, 0.645, z), m["black"], false, Basis.IDENTITY, n)
 	solid(n, Vector3(0.9, 0.7, 2.0), Vector3(0, 0.35, 0))
 
 
@@ -328,22 +335,14 @@ func _candles(n: Node3D) -> void:
 	room.tick(func(t: float) -> void: l.light_energy = 0.7 + 0.12 * sin(t * 13.0 + phase) * sin(t * 7.3))
 
 
-## 玩偶：坐在地上，脑袋歪着；进门时它的头可能会转过来看着你（room.gd 的 watchers）
+## 瓷娃娃：坐在地上，头会转过来看你
 func _doll(n: Node3D) -> void:
-	room.box(Vector3(0.14, 0.18, 0.1), Vector3(0, 0.12, 0), m["cloth"], false, Basis.IDENTITY, n)
-	for sx: float in [-0.05, 0.05]:
-		room.box(Vector3(0.05, 0.04, 0.16), Vector3(sx, 0.03, 0.08), m["cloth"], false, Basis.IDENTITY, n)
-		room.box(Vector3(0.04, 0.12, 0.04), Vector3(sx * 2.0, 0.12, 0.02), m["cloth"], false, Basis(Vector3.BACK, sx * 4.0), n)
+	model("doll_body", n)
 	var head := Node3D.new()
 	head.position = Vector3(0, 0.27, 0)
 	head.rotation.z = rng.randf_range(-0.6, 0.6)
 	n.add_child(head)
-	var ball := SphereMesh.new()
-	ball.radius = 0.07
-	ball.height = 0.14
-	room.mesh_at(ball, Transform3D.IDENTITY, m["porcelain"], head)
-	for sx: float in [-0.025, 0.025]:
-		room.box(Vector3(0.015, 0.015, 0.01), Vector3(sx, 0.01, 0.068), m["black"], false, Basis.IDENTITY, head)
+	model("doll_head", head)
 	room.watchers.append(head)
 
 
@@ -561,23 +560,11 @@ func _sheet(n: Node3D) -> void:
 
 # ---------- 第二批 ----------
 
-## 轮椅：两只大轮、小前轮、座位和靠背；进门时可能自己慢慢滑开一点
+## 轮椅：辐条大轮、帆布座；进门时可能自己滑开
 func _wheelchair(n: Node3D) -> void:
-	var frame := _metal()
-	var wheel := CylinderMesh.new()
-	wheel.top_radius = 0.3
-	wheel.bottom_radius = 0.3
-	wheel.height = 0.03
-	wheel.radial_segments = 20
-	for sx: float in [-0.3, 0.3]:
-		room.mesh_at(wheel, Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3(sx, 0.3, -0.1)), m["black"], n)
-		room.box(Vector3(0.025, 0.4, 0.025), Vector3(sx * 0.8, 0.2, 0.35), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.03, 0.03, 0.6), Vector3(sx * 0.8, 0.5, 0.05), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.03, 0.55, 0.03), Vector3(sx * 0.8, 0.78, -0.25), frame, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.48, 0.05, 0.45), Vector3(0, 0.5, 0.05), m["cloth"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.48, 0.45, 0.03), Vector3(0, 0.8, -0.25), m["cloth"], false, Basis.IDENTITY, n)
+	model("wheelchair", n, _metal())
 	if rng.randf() < dread:
-		blood(n, Vector3(0, 0.53, 0.05), 0.35)
+		blood(n, Vector3(0, 0.49, 0.05), 0.35)
 	solid(n, Vector3(0.65, 1.0, 0.9), Vector3(0, 0.5, 0))
 	room.drifters.append(n)
 
@@ -633,64 +620,31 @@ func _coffin(n: Node3D) -> void:
 	solid(n, Vector3(0.75, 0.56, 2.05), Vector3(0, 0.28, 0))
 
 
-## 摇椅：弯的摇脚；进门时它可能自己摇起来
+## 摇椅：进门时可能自己摇起来（整件绕原点摇）
 func _rocking_chair(n: Node3D) -> void:
 	var rocker := Node3D.new()
 	n.add_child(rocker)
-	var wood: Material = m["wood"]
-	for sx: float in [-0.25, 0.25]:
-		for i in 4:
-			var a0 := -0.5 + i * 0.25
-			var a1 := a0 + 0.25
-			var p0 := Vector3(sx, 0.9 - cos(a0) * 0.88, sin(a0) * 0.9)
-			var p1 := Vector3(sx, 0.9 - cos(a1) * 0.88, sin(a1) * 0.9)
-			var mid := (p0 + p1) / 2.0
-			room.box(Vector3(0.03, 0.04, (p1 - p0).length() + 0.02), mid, wood, false, Basis(Vector3.RIGHT, -(a0 + a1) / 2.0), rocker)
-		room.box(Vector3(0.035, 0.4, 0.035), Vector3(sx, 0.25, 0.18), wood, false, Basis.IDENTITY, rocker)
-		room.box(Vector3(0.035, 1.0, 0.035), Vector3(sx, 0.55, -0.2), wood, false, Basis(Vector3.RIGHT, -0.2), rocker)
-	room.box(Vector3(0.52, 0.04, 0.45), Vector3(0, 0.45, 0), wood, false, Basis.IDENTITY, rocker)
-	for i in 5:
-		room.box(Vector3(0.025, 0.6, 0.02), Vector3(-0.2 + i * 0.1, 0.8, -0.25), wood, false, Basis(Vector3.RIGHT, -0.2), rocker)
+	model("rocking_chair", rocker)
 	solid(n, Vector3(0.6, 1.0, 1.0), Vector3(0, 0.5, 0))
 	room.rockers.append(rocker)
 
 
-## 婴儿床：木栏杆围起来的小床，里面一条小毯子
+## 婴儿床：车削角柱、一圈栏杆（断了一根），里面一条皱成一团的小毯子
 func _crib(n: Node3D) -> void:
-	var wood: Material = m["wood"]
-	for sx: float in [-0.62, 0.62]:
-		for sz: float in [-0.34, 0.34]:
-			room.box(Vector3(0.05, 1.0, 0.05), Vector3(sx, 0.5, sz), wood, false, Basis.IDENTITY, n)
-	for y: float in [0.35, 0.95]:
-		for sz: float in [-0.34, 0.34]:
-			room.box(Vector3(1.24, 0.04, 0.04), Vector3(0, y, sz), wood, false, Basis.IDENTITY, n)
-		for sx: float in [-0.62, 0.62]:
-			room.box(Vector3(0.04, 0.04, 0.68), Vector3(sx, y, 0), wood, false, Basis.IDENTITY, n)
-	for i in 11:
-		var x := -0.55 + i * 0.11
-		for sz: float in [-0.34, 0.34]:
-			room.box(Vector3(0.02, 0.6, 0.02), Vector3(x, 0.65, sz), wood, false, Basis.IDENTITY, n)
-	room.box(Vector3(1.2, 0.05, 0.64), Vector3(0, 0.38, 0), m["cloth"], false, Basis.IDENTITY, n)
+	model("crib", n)
 	if rng.randf() < dread:
-		blood(n, Vector3(rng.randf_range(-0.3, 0.3), 0.408, 0), 0.4)
+		blood(n, Vector3(rng.randf_range(-0.4, 0.0), 0.418, 0), 0.4)
 	solid(n, Vector3(1.3, 1.0, 0.75), Vector3(0, 0.5, 0))
 
 
 ## 人台：没有脸的人形，立在一根杆子上；进门时可能已经转过来对着你
 func _mannequin(n: Node3D) -> void:
-	room.box(Vector3(0.35, 0.03, 0.35), Vector3(0, 0.015, 0), m["black"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.03, 0.9, 0.03), Vector3(0, 0.45, 0), m["steel"], false, Basis.IDENTITY, n)
+	model("mannequin_stand", n)
 	var body := Node3D.new()
 	n.add_child(body)
-	room.box(Vector3(0.36, 0.55, 0.22), Vector3(0, 1.18, 0), m["skin"], false, Basis.IDENTITY, body)
-	room.box(Vector3(0.3, 0.25, 0.2), Vector3(0, 0.88, 0), m["skin"], false, Basis.IDENTITY, body)
-	room.box(Vector3(0.08, 0.1, 0.08), Vector3(0, 1.5, 0), m["skin"], false, Basis.IDENTITY, body)
-	var head := SphereMesh.new()
-	head.radius = 0.11
-	head.height = 0.26
-	room.mesh_at(head, Transform3D(Basis.IDENTITY, Vector3(0, 1.66, 0)), m["skin"], body)
+	model("mannequin_body", body)
 	if rng.randf() < dread * 0.5:
-		blood(body, Vector3(0, 1.25, 0.112), 0.25, DRIP, Vector3.BACK)
+		blood(body, Vector3(0, 1.25, 0.11), 0.25, DRIP, Vector3.BACK)
 	solid(n, Vector3(0.4, 1.8, 0.3), Vector3(0, 0.9, 0))
 	room.watchers.append(body)
 
