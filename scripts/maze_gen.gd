@@ -44,6 +44,12 @@ const TOWERS_PER_TIER := 4
 const GATEHOUSES_PER_TIER := 2
 const LANDMARK_GAP := 8                # 两座地标至少隔多少块
 enum { TOWER_BELL, TOWER_WATCH, TOWER_SPIRE }
+const FLY_STAIR_BAND := 6              # 这圈观景台伸出一座“通”的飞桥：平桥接悬空楼梯落到下层街上
+const FLY_BROKEN_BANDS: Array[int] = [2, 10]   # 这几圈各伸出一座断在半空的飞桥
+const FLY_LEVEL := 2                   # 通的飞桥：平桥几块，后面三块是悬空楼梯，再一块是落脚的格子
+const FLY_BROKEN_MIN := 3              # 断桥伸出去几块
+const FLY_BROKEN_MAX := 5
+const FLY_CLEAR := 4.0                 # 飞桥下面的墙压到桥面以下这么多（桥面厚 0.8，留出 3 米多的空当，从旁边看得出桥是悬着的）
 const COURT_H := STAIR_RISE * 2.0      # 庭院围墙高出地面多少（两块楼梯的升高，8 米）；挑台和墙顶步道也在这个高度
 const ROOM_H := 6.0                    # 大房间屋顶离地高度
 const SMALL_ROOMS := 12                # 小房间（死胡同的格子）的数量
@@ -64,6 +70,9 @@ var walkway: Array = []           # walkway[z][x]：这块的顶上是步道（�
 var towers: Array[Dictionary] = [] # 塔楼：{block: 墙角块, kind: TOWER_*, base: 本层地面高度}
 var gatehouses: Array[Dictionary] = [] # 门楼：{block: 跨过的通道块, along_x: 街是否沿 x, base}
 var landmark: Array = []          # landmark[z][x]：被地标占了的块（塔楼、门楼的两个墩子和楼下的通道），墙面不再加窗和装饰件
+var overpasses: Array[Dictionary] = [] # 飞桥：{root: 观景台上的起点块, out: 朝外的方向, level: 平桥几块, stair: 悬空楼梯几块（0 = 断桥）, deck: 桥面高度, base: 下层地面高度}
+var overpass: Array = []          # overpass[z][x]：头顶有飞桥或悬空楼梯，记下层地面高度；没有是 NAN
+var jumps := {}                   # 飞桥连起来的两块：块 → [另一头的块]，path_length 用
 var span: Array = []              # span[z][x]：步道从这条通道上方跨过去——下面仍是通道（两头各一道拱），上面是步道的桥面
 var rooms: Array[Dictionary] = []  # 房间：{rect: Rect2i（大 3×3 块 / 小 1 块）, small: bool, height: 屋顶高, base: 地面高度, doors: 门所在的块}
 var doorway: Array = []           # doorway[z][x]：这条通道是小房间的门——厚墙上开一个窄拱门
@@ -86,6 +95,9 @@ func generate(seed_value: int) -> void:
 	walkway = _grid(false)
 	span = _grid(false)
 	landmark = _grid(false)
+	overpass = _grid(NAN)
+	overpasses.clear()
+	jumps.clear()
 	towers.clear()
 	gatehouses.clear()
 	courtyards.clear()
@@ -110,6 +122,7 @@ func generate(seed_value: int) -> void:
 	_make_small_rooms()
 	_pick_spawn()
 	_make_walkways()
+	_make_overpasses()
 	_make_landmarks()
 
 
@@ -162,6 +175,14 @@ func floor_height(x: int, z: int) -> float:
 	if kind[z][x] == STAIR:
 		h += STAIR_RISE / 2.0
 	return h
+
+
+## 站在 (x, z) 这块、高度 y 时所在层的地面高度：站在飞桥或悬空楼梯上按自己的高度往下对齐到层高，
+## 其余同 tier_floor
+func ground_tier(x: int, z: int, y: float) -> float:
+	if x >= 0 and z >= 0 and x < n and z < n and not is_nan(overpass[z][x]) and y > overpass[z][x] + 1.0:
+		return floorf(y / TIER_H + 0.001) * TIER_H
+	return tier_floor(x, z)
 
 
 func _grid(value: Variant) -> Array:
@@ -760,6 +781,84 @@ func _walkway_ok(p: Vector2i, base: float) -> bool:
 
 ## 地标：每层先找门楼（长直街上的一条通道，两侧墙角做墩子），再找塔楼（墙角块，越靠近庭院越优先）。
 ## 都不碰步道、房间、楼梯、桥和观景台，彼此至少隔 LANDMARK_GAP 块
+## 飞桥：从观景台水平伸出去，沿下层一条放射方向的直线，在下层地面上方一个层高处越过墙头。
+## 一座“通”的：平桥 FLY_LEVEL 块，接三块悬空楼梯（每块降 STAIR_RISE）落到下层的一个格子上；
+## 几座断的：伸出去几块就断在半空。桥下的墙压到桥面以下 FLY_CLEAR
+func _make_overpasses() -> void:
+	for b in [FLY_STAIR_BAND] + FLY_BROKEN_BANDS:
+		var stair := STAIR_BLOCKS if b == FLY_STAIR_BAND else 0
+		var cands := _overpass_roots(b)
+		_shuffle(cands)
+		for c: Array in cands:
+			var root: Vector2i = c[0]
+			var out: Vector2i = c[1]
+			var level := FLY_LEVEL if stair > 0 else rng.randi_range(FLY_BROKEN_MIN, FLY_BROKEN_MAX)
+			level = mini(level, _overpass_room(b) - (stair + 1 if stair > 0 else 1))   # 断桥离对面留一排
+			if level < 1 or not _overpass_ok(root, out, level, stair):
+				continue
+			var deck: float = height[root.y][root.x]
+			var base := deck - TIER_H
+			for k in range(1, level + stair + 1):
+				var p := root + out * k
+				overpass[p.y][p.x] = base
+				if kind[p.y][p.x] == WALL or kind[p.y][p.x] == PARAPET:
+					wall_top[p.y][p.x] = minf(wall_top[p.y][p.x], deck - FLY_CLEAR)
+				if k > level:
+					arch[p.y][p.x] = false   # 楼梯从这里穿过，拱门让开
+			if stair > 0:
+				var foot := root + out * (level + stair)
+				jumps[root] = [foot]
+				jumps[foot] = [root]
+			overpasses.append({"root": root, "out": out, "level": level, "stair": stair, "deck": deck, "base": base})
+			break
+
+
+## 第 b 圈观景台上能伸出飞桥的块：每条边的直段上、对着下层一排格子的那些（偏移是偶数块）
+func _overpass_roots(b: int) -> Array:
+	var center := Vector2i(n / 2, n / 2)
+	var roots: Array = []
+	for out: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
+		var along := Vector2i(-out.y, out.x)
+		for a in range(-(b * 2 - 2), b * 2 - 1, 2):
+			var p: Vector2i = center + out * (b * 2) + along * a
+			if kind[p.y][p.x] == TERRACE:
+				roots.append([p, out])
+	return roots
+
+
+## 第 b 圈外面那一层有几排块（到下一圈观景台或最外圈围墙之前）
+func _overpass_room(b: int) -> int:
+	var i := BANDS.find(b)
+	var outer: int = BANDS[i + 1] * 2 if i + 1 < BANDS.size() else n / 2
+	return outer - b * 2 - 1
+
+
+## 飞桥伸出去的那一串块：平桥下面什么都行（墙会压低），只是不跨房间和庭院；
+## 悬空楼梯和落脚的格子要是下层的平地，没有桥面、门口和步道（楼梯会从那里穿过；拱门拆掉）
+func _overpass_ok(root: Vector2i, out: Vector2i, level: int, stair: int) -> bool:
+	var deck: float = height[root.y][root.x]
+	var base := deck - TIER_H
+	var last := level + stair + (1 if stair > 0 else 0)
+	for k in range(1, last + 1):
+		var p := root + out * k
+		if p.x < 1 or p.y < 1 or p.x >= n - 1 or p.y >= n - 1:
+			return false
+		var kk: int = kind[p.y][p.x]
+		if kk == TERRACE or kk == STAIR and k <= level:
+			return false
+		for r in courtyards:
+			if r.has_point(p):
+				return false
+		for room: Dictionary in rooms:
+			if (room["rect"] as Rect2i).has_point(p):
+				return false
+		if k > level:
+			if kk != FLOOR or not is_equal_approx(height[p.y][p.x], base) \
+					or span[p.y][p.x] or doorway[p.y][p.x] or walkway[p.y][p.x]:
+				return false
+	return true
+
+
 func _make_landmarks() -> void:
 	var placed: Array[Vector2i] = []
 	for t in TOP_TIER:
@@ -823,7 +922,7 @@ func _shuffle(a: Array) -> void:
 		a[j] = tmp
 
 
-## 周围 3×3 里没有楼梯、桥、深渊、观景台、小房间门口，开放块都在本层地面上；不挨着房间
+## 周围 3×3 里没有楼梯、桥、深渊、观景台、小房间门口、飞桥，开放块都在本层地面上；不挨着房间
 func _quiet(p: Vector2i, base: float) -> bool:
 	for room: Dictionary in rooms:
 		if (room["rect"] as Rect2i).grow(2).has_point(p):
@@ -836,6 +935,8 @@ func _quiet(p: Vector2i, base: float) -> bool:
 			if k == STAIR or k == BRIDGE or k == PLATFORM or k == VOID or k == TERRACE or doorway[z][x]:
 				return false
 			if k == FLOOR and not is_equal_approx(height[z][x], base):
+				return false
+			if not is_nan(overpass[z][x]):
 				return false
 	return true
 
@@ -874,7 +975,7 @@ func _gatehouse_ok(p: Vector2i, base: float) -> bool:
 
 
 ## 从 from 走到 to 要几步（按块计）；走不到返回 -1。
-## 相邻开放块的高差不超过一块楼梯的升高就能走过去
+## 相邻开放块的高差不超过一块楼梯的升高就能走过去；飞桥两头也算连着
 func path_length(from: Vector2i, to: Vector2i) -> int:
 	var dist := {from: 0}
 	var queue: Array[Vector2i] = [from]
@@ -890,6 +991,10 @@ func path_length(from: Vector2i, to: Vector2i) -> int:
 				continue
 			dist[q] = dist[p] + 1
 			queue.append(q)
+		for q: Vector2i in jumps.get(p, []):
+			if not dist.has(q):
+				dist[q] = dist[p] + 1
+				queue.append(q)
 	return -1
 
 
