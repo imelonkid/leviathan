@@ -1,5 +1,6 @@
 # 房间道具，按参数生成，导出成 assets/models/room_props.glb。
-# 第一批：铁床、摇椅、婴儿床、轮椅、瓷娃娃、人台；第二批（医疗类）：手术台、推床、输液架、推车、洗手池、浴缸、铁皮柜、柜子。
+# 第一批：铁床、摇椅、婴儿床、轮椅、瓷娃娃、人台；第二批（医疗类）：手术台、推床、输液架、推车、洗手池、浴缸、铁皮柜、柜子；
+# 第三批（家具）：椅子、凳子、桌子（加一套餐具）、长餐桌、课桌、长椅、架子（三套瓶罐）、木箱、落地钟、挂钟、表盘。
 # 每个物体一件（或一件的一个活动部分），按名字取；材质槽名字对应 scripts/rooms/props.gd 里的材质：
 #   frame（铁或锈，游戏里按不安程度挑；铁皮柜是漆过的铁）、wood、cloth、porcelain、black、skin、steel、brass、glass
 #   （wood、glass、black 等槽在游戏里也可能被换掉：柜子有深浅两种木头，输液袋、浴缸和洗手池里的水不安时是血）
@@ -18,7 +19,8 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-SLOTS = ["frame", "wood", "cloth", "porcelain", "black", "skin", "steel", "brass", "glass"]
+SLOTS = ["frame", "wood", "cloth", "porcelain", "black", "skin", "steel", "brass", "glass", "dark_wood", "face", "wax",
+         "flame", "jar_dark"]
 COLORS = {
     "frame": ((0.2, 0.19, 0.18), 0.6, 0.7),
     "wood": ((0.24, 0.16, 0.1), 0.75, 0.0),
@@ -29,6 +31,11 @@ COLORS = {
     "steel": ((0.5, 0.5, 0.5), 0.3, 0.9),
     "brass": ((0.55, 0.42, 0.22), 0.35, 0.9),
     "glass": ((0.25, 0.27, 0.28), 0.08, 0.95),
+    "dark_wood": ((0.12, 0.08, 0.05), 0.7, 0.0),
+    "face": ((0.7, 0.66, 0.55), 0.6, 0.0),
+    "wax": ((0.62, 0.56, 0.45), 0.7, 0.0),
+    "flame": ((1.0, 0.62, 0.28), 0.5, 0.0),
+    "jar_dark": ((0.2, 0.08, 0.06), 0.1, 0.5),
 }
 
 
@@ -662,6 +669,265 @@ def cabinet():
         d.build()
 
 
+# ======================= 第三批：家具 =======================
+
+def turned_leg(p, x, z, y0, y1, r, slot="wood", seg=8):
+    """车削的桌椅腿：上方一段方榫（这里用粗一点的圆段代替），中间收细，脚下收一点"""
+    h = y1 - y0
+    prof = [(r * 0.8, 0.0), (r, 0.03 * h), (r * 0.85, 0.12 * h), (r * 0.7, 0.55 * h), (r * 0.95, 0.78 * h),
+            (r * 1.05, 0.82 * h), (r, 1.0 * h), (0.0, 1.0 * h)]
+    p.lathe(prof, slot, seg, Matrix.Translation(V(x, y0, z)))
+
+
+# ---------- 椅子：车削腿、略带圆角的座面、两根靠背立柱、弯的顶梁和一块竖背板、腿间横档 ----------
+
+def chair():
+    p = Part("chair")
+    for sx in (-0.2, 0.2):
+        for sz in (-0.2, 0.2):
+            if sz < 0:
+                p.tube([V(sx, 0.0, sz), V(sx, 0.45, sz), V(sx, 0.95, sz - 0.05)], 0.02, "wood", 8)   # 后腿连靠背立柱
+                p.ball(V(sx, 0.96, sz - 0.052), 0.024, "wood", 8)
+            else:
+                turned_leg(p, sx, sz, 0.0, 0.44, 0.022)
+        p.box(V(sx, 0.15, 0), (0.025, 0.025, 0.4), "wood")                                                 # 侧横档
+    p.box(V(0, 0.2, 0.2), (0.4, 0.025, 0.025), "wood")
+    p.loft([(0.435, 0.23, 0.23, 0.03), (0.47, 0.235, 0.235, 0.035), (0.48, 0.225, 0.225, 0.03)], "wood", corner=3)
+    p.bar([V(-0.2, 0.89, -0.245), V(0, 0.9, -0.27), V(0.2, 0.89, -0.245)], 0.03, 0.08, "wood", up=V(0, 1, 0))
+    p.bar([V(0, 0.5, -0.215), V(0, 0.86, -0.25)], 0.12, 0.02, "wood", up=V(0, 0, 1))                          # 竖背板
+    p.build()
+
+
+# ---------- 三脚凳：车削的圆座面、三条外撇的腿、一圈横档 ----------
+
+def stool():
+    p = Part("stool")
+    p.lathe([(0.0, 0.46), (0.16, 0.46), (0.172, 0.475), (0.168, 0.495), (0.0, 0.5)], "wood", 18)
+    for i in range(3):
+        a = 2 * math.pi * i / 3
+        d = V(math.cos(a), 0, math.sin(a))
+        p.tube([d * 0.1 + V(0, 0.46, 0), d * 0.17 + V(0, 0.0, 0)], 0.016, "wood", 8)
+    ring = [V(math.cos(2 * math.pi * k / 3) * 0.14, 0.17, math.sin(2 * math.pi * k / 3) * 0.14) for k in range(3)]
+    p.tube(ring, 0.009, "wood", 6, close_path=True)
+    p.build()
+
+
+# ---------- 桌子：桌面、四面牙板、收细的车削腿；餐具（两只盘子、两把刀）单独一件 ----------
+
+def table():
+    p = Part("table")
+    p.loft([(0.735, 0.7, 0.4, 0.02), (0.775, 0.7, 0.4, 0.02), (0.785, 0.69, 0.39, 0.015)], "wood", corner=2)
+    p.loft([(0.64, 0.63, 0.33, 0.01), (0.735, 0.63, 0.33, 0.01)], "wood", corner=1)                           # 牙板
+    for sx in (-0.64, 0.64):
+        for sz in (-0.34, 0.34):
+            turned_leg(p, sx, sz, 0.0, 0.735, 0.03)
+    p.build()
+
+    s = Part("table_setting")
+    for sx in (-0.35, 0.35):
+        s.lathe([(0.0, 0.785), (0.08, 0.785), (0.1, 0.79), (0.12, 0.8), (0.11, 0.8), (0.085, 0.792), (0.0, 0.792)],
+                "porcelain", 20, Matrix.Translation(V(sx, 0, 0)))
+        s.box(V(sx + 0.16, 0.788, 0), (0.015, 0.004, 0.18), "steel")
+    s.build()
+
+
+# ---------- 长餐桌：深色桌面、垂到两边的桌布、八套盘子、正中一座三头烛台（蜡烛和火苗在里面，灯光在游戏里打） ----------
+
+def long_table():
+    p = Part("long_table")
+    p.loft([(0.735, 1.3, 0.5, 0.03), (0.785, 1.3, 0.5, 0.03)], "dark_wood", corner=2)
+    for sx in (-1.2, 1.2):
+        for sz in (-0.42, 0.42):
+            turned_leg(p, sx, sz, 0.0, 0.735, 0.035, "dark_wood")
+    p.box(V(0, 0.12, 0), (2.4, 0.04, 0.04), "dark_wood")                                                    # 底下一根长撑
+    for sx in (-1.2, 1.2):
+        p.box(V(sx, 0.12, 0), (0.04, 0.04, 0.84), "dark_wood")
+
+    def drape(x, z):
+        top = 0.792
+        ex, ez = max(0.0, abs(x) - 1.31), max(0.0, abs(z) - 0.51)
+        e = max(ex, ez)
+        if e <= 0:
+            return top
+        return top - min(0.32, e * 5.0) - 0.01 * math.sin(x * 19.0 + z * 23.0) * min(1.0, e * 12)
+
+    xs = [-1.4 + i * 0.05 for i in range(57)]
+    zs = [-0.6 + i * 0.04 for i in range(31)]
+    p.sheet(xs, zs, drape, 0.006, "cloth")
+    plates = [(x, z * 0.55) for x in (-0.85, 0.0, 0.85) for z in (0.75, -0.75)] + [(1.24, 0.0), (-1.24, 0.0)]
+    for x, z in plates:
+        p.lathe([(0.0, 0.792), (0.08, 0.792), (0.1, 0.797), (0.12, 0.807), (0.11, 0.807), (0.085, 0.8), (0.0, 0.8)],
+                "porcelain", 18, Matrix.Translation(V(x, 0, z)))
+    # 烛台
+    p.lathe([(0.0, 0.792), (0.09, 0.792), (0.09, 0.81), (0.04, 0.84), (0.025, 0.9), (0.035, 0.95), (0.02, 1.0),
+             (0.03, 1.06), (0.0, 1.07)], "brass", 14)
+    p.tube([V(-0.13, 1.1, 0), V(-0.12, 1.06, 0), V(0, 1.05, 0), V(0.12, 1.06, 0), V(0.13, 1.1, 0)], 0.008, "brass", 6)
+    for sx in (-0.13, 0.0, 0.13):
+        y0 = 1.07 if sx == 0 else 1.1
+        p.lathe([(0.0, y0), (0.028, y0), (0.022, y0 + 0.02), (0.0, y0 + 0.02)], "brass", 10, Matrix.Translation(V(sx, 0, 0)))
+        p.lathe([(0.0, 0.0), (0.014, 0.0), (0.014, 0.13), (0.011, 0.14), (0.0, 0.14)], "wax", 10,
+                Matrix.Translation(V(sx, y0 + 0.02, 0)))
+        p.ball(V(sx, y0 + 0.18, 0), 0.008, "flame", 8, (1.0, 2.6, 1.0))
+    p.build()
+
+
+# ---------- 课桌连椅：斜桌面、桌肚、铁架和两根落地的滑脚，后面连着一把小椅子 ----------
+
+def desk():
+    p = Part("desk")
+    p.box(V(0, 0.72, 0.25), (0.7, 0.03, 0.45), "wood", rx(0.08))
+    p.box(V(0, 0.64, 0.25), (0.66, 0.1, 0.4), "dark_wood")
+    p.box(V(0, 0.585, 0.25), (0.6, 0.01, 0.36), "black")                                                    # 桌肚里黑的
+    p.box(V(0.25, 0.745, 0.14), (0.06, 0.01, 0.012), "black")                                                # 笔槽
+    for sx in (-0.3, 0.3):
+        p.tube([V(sx, 0.03, 0.42), V(sx, 0.03, -0.42)], 0.016, "frame", 6)                                  # 滑脚
+        p.tube([V(sx, 0.03, 0.3), V(sx, 0.6, 0.27)], 0.016, "frame", 6)
+        p.tube([V(sx * 0.7, 0.03, -0.3), V(sx * 0.7, 0.42, -0.3), V(sx * 0.7, 0.77, -0.48)], 0.014, "frame", 6)
+        p.tube([V(sx, 0.03, 0.0), V(sx * 0.85, 0.3, 0.12), V(sx, 0.58, 0.18)], 0.01, "frame", 4)
+    p.box(V(0, 0.43, -0.3), (0.44, 0.03, 0.36), "wood")
+    p.box(V(0, 0.66, -0.48), (0.44, 0.2, 0.025), "wood", rx(-0.1))
+    p.build()
+
+
+# ---------- 候诊长椅：三副铸铁侧架（带扶手的弯腿）、三根木条座面、两根往后仰的木条靠背 ----------
+
+def bench():
+    p = Part("bench")
+    for sx in (-0.8, 0.0, 0.8):
+        p.tube([V(sx, 0.0, 0.2), V(sx, 0.2, 0.18), V(sx, 0.44, 0.16)], 0.018, "frame", 6)
+        p.tube([V(sx, 0.0, -0.2), V(sx, 0.44, -0.18), V(sx, 0.95, -0.27)], 0.018, "frame", 6)
+        p.tube([V(sx, 0.44, 0.2), V(sx, 0.44, -0.2)], 0.016, "frame", 6)
+        if sx != 0.0:
+            p.tube([V(sx, 0.44, 0.18), V(sx, 0.62, 0.2), V(sx, 0.64, 0.05), V(sx, 0.62, -0.2)], 0.014, "frame", 6)
+    for k in range(3):
+        p.box(V(0, 0.465, -0.12 + k * 0.14), (1.8, 0.03, 0.12), "wood")
+    for k in range(2):
+        y = 0.7 + k * 0.18
+        p.box(V(0, y, -0.215 - (y - 0.7) * 0.12), (1.8, 0.1, 0.025), "wood", rx(-0.12))
+    p.build()
+
+
+# ---------- 架子：两块侧板、四层隔板、背后两道斜拉条；瓶瓶罐罐三套（jar_dark 槽在游戏里可能是血） ----------
+
+def shelf():
+    p = Part("shelf")
+    for sx in (-0.68, 0.68):
+        p.box(V(sx, 1.0, 0), (0.04, 2.0, 0.38), "wood")
+    for i in range(4):
+        y = 0.15 + i * 0.6
+        p.box(V(0, y, 0), (1.32, 0.03, 0.38), "wood")
+        p.box(V(0, y - 0.035, 0.18), (1.32, 0.04, 0.02), "wood")                                              # 隔板前沿
+    p.box(V(0, 2.02, 0), (1.44, 0.04, 0.42), "wood")
+    for a in (1, -1):
+        p.box(V(0, 1.05, -0.18), (0.03, 2.1, 0.01), "dark_wood", Matrix.Rotation(a * 0.62, 3, "Z"))
+    p.build()
+
+    rng_state = [7]
+
+    def rnd():
+        rng_state[0] = (rng_state[0] * 1103515245 + 12345) % 2147483648
+        return rng_state[0] / 2147483648
+
+    for variant in "abc":
+        j = Part("shelf_jars_" + variant)
+        for i in range(3):
+            y = 0.15 + i * 0.6 + 0.015
+            x = -0.6
+            while x < 0.58:
+                r = 0.05 + rnd() * 0.05
+                h = 0.12 + rnd() * 0.23
+                if rnd() < 0.75:
+                    slot = "jar_dark" if rnd() < 0.4 else "glass"
+                    z = (rnd() - 0.5) * 0.16
+                    neck = r * (0.55 + rnd() * 0.3)
+                    j.lathe([(0.0, 0.0), (r * 0.95, 0.0), (r, 0.02), (r, h * 0.78), (neck, h * 0.9), (neck, h), (0.0, h)],
+                            slot, 12, Matrix.Translation(V(x + r, y, z)))
+                    if rnd() < 0.6:                                                                       # 盖子
+                        j.lathe([(0.0, h), (neck * 1.1, h), (neck * 1.1, h + 0.02), (0.0, h + 0.025)], "dark_wood", 10,
+                                Matrix.Translation(V(x + r, y, z)))
+                x += r * 2 + 0.06
+        j.build()
+
+
+# ---------- 木箱：边长 0.7 的板条箱（四周一圈加强框、一道斜撑），游戏里按大小缩放、摞起来 ----------
+
+def crate():
+    p = Part("crate")
+    h = 0.35
+    p.box(V(0, h, 0), (0.68, 0.68, 0.68), "wood")
+    for sx in (-1, 1):                                                                                     # 每面的边框
+        for sy in (-1, 1):
+            p.box(V(sx * 0.33, h + sy * 0.33, 0), (0.06, 0.06, 0.72), "dark_wood")
+            p.box(V(0, h + sy * 0.33, sx * 0.33), (0.72, 0.06, 0.06), "dark_wood")
+            p.box(V(sx * 0.33, h, sy * 0.33), (0.06, 0.72, 0.06), "dark_wood")
+    for nz in (-1, 1):
+        p.box(V(0, h, nz * 0.345), (0.85, 0.06, 0.02), "dark_wood", Matrix.Rotation(math.pi / 4, 3, "Z"))
+        p.box(V(nz * 0.345, h, 0), (0.02, 0.06, 0.85), "dark_wood", Matrix.Rotation(math.pi / 4, 3, "X"))
+    for k in range(1, 4):                                                                                  # 板缝
+        y = h - 0.3 + k * 0.15
+        for nz in (-1, 1):
+            p.box(V(0, y, nz * 0.342), (0.6, 0.008, 0.01), "black")
+            p.box(V(nz * 0.342, y, 0), (0.01, 0.008, 0.6), "black")
+    p.build()
+
+
+# ---------- 落地钟：底座、开着前脸的钟身（看得见钟摆）、带拱顶和柱头的钟头；表盘、指针、钟摆在游戏里另摆 ----------
+
+def grandfather():
+    p = Part("grandfather")
+    p.box(V(0, 0.04, 0), (0.98, 0.08, 0.62), "dark_wood")                                                     # 踢脚
+    p.box(V(0, 0.34, 0), (0.9, 0.52, 0.55), "dark_wood")
+    p.box(V(0, 0.62, 0), (0.96, 0.05, 0.6), "dark_wood")
+    p.box(V(0, 0.36, 0.28), (0.6, 0.34, 0.02), "dark_wood")                                                   # 底座门板
+    for sx in (-0.4, 0.4):
+        p.box(V(sx, 1.4, 0), (0.1, 1.56, 0.5), "dark_wood")
+        p.box(V(sx * 0.9, 1.4, 0.26), (0.04, 1.5, 0.02), "brass")                                             # 门框
+    p.box(V(0, 1.4, -0.24), (0.8, 1.56, 0.04), "dark_wood")
+    p.box(V(0, 1.4, -0.215), (0.7, 1.5, 0.01), "black")                                                       # 钟身里面
+    p.box(V(0, 2.2, 0), (0.98, 0.06, 0.62), "dark_wood")
+    p.box(V(0, 2.65, -0.02), (0.92, 0.86, 0.56), "dark_wood")                                                 # 钟头
+    for sx in (-0.44, 0.44):                                                                                 # 钟头两边的小柱子
+        p.lathe([(0.03, 0.0), (0.035, 0.05), (0.025, 0.4), (0.035, 0.8), (0.03, 0.86), (0.0, 0.86)], "brass", 10,
+                Matrix.Translation(V(sx, 2.23, 0.27)))
+    # 拱顶：一块弓形的顶板，两头一对柱头球
+    arch = [V(-0.5, 3.08, 0.0)] + [V(-0.5 + i / 10, 3.08 + 0.18 * math.sin(math.pi * i / 10), 0.0) for i in range(1, 10)] + \
+           [V(0.5, 3.08, 0.0)]
+    p.bar(arch, 0.6, 0.08, "dark_wood", up=V(0, 1, 0))
+    p.box(V(0, 3.1, 0), (1.02, 0.06, 0.64), "dark_wood")
+    for sx in (-0.48, 0.0, 0.48):
+        p.ball(V(sx, 3.2 + (0.19 if sx == 0 else 0.0), 0.0), 0.04, "brass", 10)
+    p.build()
+
+    pend = Part("pendulum")
+    pend.tube([V(0, 0.0, 0), V(0, -1.15, 0)], 0.008, "brass", 6)
+    pend.lathe([(0.0, -0.02), (0.11, -0.012), (0.12, 0.0), (0.11, 0.012), (0.0, 0.02)], "brass", 20,
+               Matrix.Translation(V(0, -1.2, 0)) @ Matrix.Rotation(math.pi / 2, 4, "X"))
+    pend.build()
+
+
+# ---------- 挂钟的木壳（单位半径，游戏里按大小在 xy 上缩放）和表盘（单位半径的盘面、刻度、铜圈） ----------
+
+def clock():
+    p = Part("clock_case")
+    p.lathe([(0.0, 0.0), (1.15, 0.0), (1.15, 0.05), (1.1, 0.07), (1.02, 0.08), (0.0, 0.08)], "dark_wood", 32,
+            Matrix.Rotation(math.pi / 2, 4, "X") @ Matrix.Translation(V(0, 0, 0)))
+    p.build()
+
+    d = Part("dial")
+    d.lathe([(0.0, -0.01), (1.0, -0.01), (1.0, 0.01), (0.0, 0.01)], "face", 32, Matrix.Rotation(math.pi / 2, 4, "X"))
+    d.torus(V(0, 0, 0.01), Matrix.Rotation(math.pi / 2, 4, "X"), 1.0, 0.03, "brass", 32, 5)
+    for i in range(12):
+        a = 2 * math.pi * i / 12
+        long = i % 3 == 0
+        d.box(V(math.sin(a) * 0.82, math.cos(a) * 0.82, 0.015), (0.04, 0.16 if long else 0.08, 0.01), "black",
+              Matrix.Rotation(-a, 3, "Z"))
+    for i in range(60):                                                                                      # 分钟小点
+        if i % 5:
+            a = 2 * math.pi * i / 60
+            d.box(V(math.sin(a) * 0.9, math.cos(a) * 0.9, 0.013), (0.015, 0.03, 0.006), "black", Matrix.Rotation(-a, 3, "Z"))
+    d.build()
+
+
 def preview(objs, out_dir):
     world = bpy.data.worlds.new("dim")
     world.use_nodes = True
@@ -674,7 +940,7 @@ def preview(objs, out_dir):
         o.location = loc
         bpy.context.collection.objects.link(o)
     floor = Part("floor")
-    floor.box(V(0, -0.05, 0), (12, 0.1, 6), "cloth")
+    floor.box(V(0, -0.05, 2.5), (14, 0.1, 11), "cloth")
     floor.box(V(0, 1.5, -1.6), (12, 3.0, 0.1), "cloth")
     floor.build()
     sc = bpy.context.scene
@@ -687,7 +953,7 @@ def preview(objs, out_dir):
     cam = bpy.data.objects.new("cam", cam_data)
     bpy.context.collection.objects.link(cam)
     sc.camera = cam
-    cam.location = (0.0, -9.0, 2.6)
+    cam.location = (0.0, -11.5, 2.8)
     cam.rotation_euler = (Vector((0, 0, 0.6)) - cam.location).to_track_quat("-Z", "Y").to_euler()
     sc.render.filepath = os.path.join(out_dir, "room_props_preview.png")
     bpy.ops.render.render(write_still=True)
@@ -707,7 +973,8 @@ def main():
         bsdf.inputs["Roughness"].default_value = rough
         bsdf.inputs["Metallic"].default_value = metal
     for build in (bed, rocking_chair, crib, wheelchair, doll, mannequin,
-                  optable, gurney, iv_stand, cart, sink, bathtub, lockers, cabinet):
+                  optable, gurney, iv_stand, cart, sink, bathtub, lockers, cabinet,
+                  chair, stool, table, long_table, desk, bench, shelf, crate, grandfather, clock):
         build()
     objs = [o for o in bpy.data.objects]
     bpy.ops.object.select_all(action="DESELECT")
@@ -725,7 +992,11 @@ def main():
                  "iv_bag": (-2.4, 2.6), "cart": (-1.5, 2.6), "sink": (-0.5, 2.6), "sink_fill": (-0.5, 2.6),
                  "bathtub": (0.6, 2.6), "bathtub_fill": (0.6, 2.6), "lockers_body": (2.0, 2.6),
                  "locker_door": (1.77, 2.85), "cabinet": (3.5, 2.6), "cabinet_door_r": (4.0, 2.855),
-                 "cabinet_door_l": (3.0, 2.855)}
+                 "cabinet_door_l": (3.0, 2.855),
+                 "chair": (-4.6, 5.0), "stool": (-4.0, 5.0), "table": (-3.0, 5.0), "table_setting": (-3.0, 5.0),
+                 "long_table": (-0.8, 5.0), "desk": (1.0, 5.0), "bench": (2.4, 5.0), "shelf": (4.2, 4.6),
+                 "shelf_jars_a": (4.2, 4.6), "shelf_jars_b": (99, 99), "shelf_jars_c": (99, 99), "crate": (-4.4, 6.0),
+                 "grandfather": (5.4, 4.6), "pendulum": (99, 99), "clock_case": (99, 99), "dial": (99, 99)}
         for o in objs:
             x, z = place[o.name]
             o.location = (x, -z, 0.0)

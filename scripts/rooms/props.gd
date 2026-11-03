@@ -1,6 +1,6 @@
 extends RefCounted
-## 实体库：房间里能摆的东西。床、摇椅、婴儿床、轮椅、娃娃、人台和医疗类的几件是 Blender 脚本建的模型
-## （tools/blender/room_props.py → room_props.glb），其余的还是用方块和圆柱拼出来的小模型。
+## 实体库：房间里能摆的东西。大部分是 Blender 脚本建的模型（tools/blender/room_props.py → room_props.glb），
+## 少数（画框、镜子、黑板、祭台、棺材、笼子之类）还是用方块和圆柱拼出来的小模型。
 ## 每个实体登记在 ENTITIES 里：放哪（place）、占地多大（foot：宽 × 深，米）、带什么气质（tags）。
 ## 房间配方（recipes.gd）按气质给权重挑实体，room.gd 负责摆放；这里只管“一件东西长什么样”。
 ##
@@ -177,29 +177,11 @@ func _cabinet(n: Node3D) -> void:
 	solid(n, Vector3(1.0, 1.9, 0.5), Vector3(0, 0.95, 0))
 
 
-## 架子：三层隔板，摆着瓶瓶罐罐；不安的罐子里是暗红的
+## 架子：四层隔板，摆着瓶瓶罐罐（三套摆法挑一套）；不安的深色罐子里是暗红的
 func _shelf(n: Node3D) -> void:
-	var wood: Material = m["wood"]
-	for sx: float in [-0.68, 0.68]:
-		room.box(Vector3(0.04, 2.0, 0.38), Vector3(sx, 1.0, 0), wood, false, Basis.IDENTITY, n)
-	for i in 4:
-		var y := 0.15 + i * 0.6
-		room.box(Vector3(1.4, 0.03, 0.38), Vector3(0, y, 0), wood, false, Basis.IDENTITY, n)
-		if i == 3:
-			continue
-		var x := -0.6
-		while x < 0.6:
-			var r := rng.randf_range(0.05, 0.1)
-			var h := rng.randf_range(0.12, 0.35)
-			if rng.randf() < 0.75:
-				var jar := CylinderMesh.new()
-				jar.top_radius = r * 0.8
-				jar.bottom_radius = r
-				jar.height = h
-				jar.radial_segments = 10
-				var mat: Material = m["gore"] if rng.randf() < dread * 0.6 else m["glass"]
-				room.mesh_at(jar, Transform3D(Basis.IDENTITY, Vector3(x + r, y + 0.015 + h / 2.0, rng.randf_range(-0.08, 0.08))), mat, n)
-			x += r * 2.0 + 0.06
+	model("shelf", n)
+	var dark: Material = m["gore"] if rng.randf() < dread * 0.8 else m["glass"]
+	model("shelf_jars_" + "abc"[rng.randi_range(0, 2)], n, {"jar_dark": dark})
 	solid(n, Vector3(1.4, 2.0, 0.4), Vector3(0, 1.0, 0))
 
 
@@ -226,36 +208,21 @@ func _cart(n: Node3D) -> void:
 	solid(n, Vector3(0.6, 0.9, 0.9), Vector3(0, 0.45, 0))
 
 
-## 椅子：不安的时候可能翻倒
+## 椅子：车削腿、弯顶梁；不安的时候可能翻倒
 func _chair(n: Node3D) -> void:
 	var wood: Material = m["wood"] if rng.randf() < 0.6 else _metal()
 	var c := Node3D.new()
 	n.add_child(c)
-	for sx: float in [-0.2, 0.2]:
-		for sz: float in [-0.2, 0.2]:
-			room.box(Vector3(0.04, 0.45, 0.04), Vector3(sx, 0.225, sz), wood, false, Basis.IDENTITY, c)
-		room.box(Vector3(0.04, 0.5, 0.04), Vector3(sx, 0.7, -0.2), wood, false, Basis.IDENTITY, c)
-	room.box(Vector3(0.46, 0.04, 0.46), Vector3(0, 0.46, 0), wood, false, Basis.IDENTITY, c)
-	room.box(Vector3(0.44, 0.12, 0.03), Vector3(0, 0.88, -0.2), wood, false, Basis.IDENTITY, c)
+	model("chair", c, {"wood": wood})
 	if rng.randf() < dread * 0.3:
 		c.transform = Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-90)), Vector3(0, 0.2, 0.45))
 	solid(n, Vector3(0.46, 0.9, 0.46), Vector3(0, 0.45, 0))
 
 
-## 桌子：桌上随手放几样；正常的屋子里摆着餐具
+## 桌子：车削腿、牙板；桌上摆着两套餐具
 func _table(n: Node3D) -> void:
-	var wood: Material = m["wood"]
-	room.box(Vector3(1.4, 0.05, 0.8), Vector3(0, 0.76, 0), wood, false, Basis.IDENTITY, n)
-	for sx: float in [-0.64, 0.64]:
-		for sz: float in [-0.34, 0.34]:
-			room.box(Vector3(0.05, 0.74, 0.05), Vector3(sx, 0.37, sz), wood, false, Basis.IDENTITY, n)
-	for sx: float in [-0.35, 0.35]:
-		var plate := CylinderMesh.new()
-		plate.top_radius = 0.12
-		plate.bottom_radius = 0.1
-		plate.height = 0.015
-		room.mesh_at(plate, Transform3D(Basis.IDENTITY, Vector3(sx, 0.79, 0)), m["porcelain"], n)
-		room.box(Vector3(0.015, 0.005, 0.18), Vector3(sx + 0.16, 0.787, 0), m["steel"], false, Basis.IDENTITY, n)
+	model("table", n)
+	model("table_setting", n)
 	if rng.randf() < dread:
 		blood(n, Vector3(rng.randf_range(-0.3, 0.3), 0.788, 0), 0.5)
 	solid(n, Vector3(1.4, 0.8, 0.8), Vector3(0, 0.4, 0))
@@ -278,15 +245,14 @@ func _cage(n: Node3D) -> void:
 	solid(n, Vector3(1.2, h, 1.2), Vector3(0, h / 2.0, 0))
 
 
-## 木箱：一到三只摞着
+## 木箱：一到三只摞着，大小不一、各自歪一点
 func _crate(n: Node3D) -> void:
 	var y := 0.0
 	for i in rng.randi_range(1, 3):
-		var s := rng.randf_range(0.55, 0.8)
-		var rot := Basis(Vector3.UP, rng.randf_range(-0.3, 0.3))
-		room.box(Vector3(s, s, s), Vector3(0, y + s / 2.0, 0), m["wood"], false, rot, n)
-		room.box(Vector3(s + 0.02, 0.06, 0.06), Vector3(0, y + s / 2.0, 0), m["dark_wood"], false, rot, n)
-		y += s
+		var sz := rng.randf_range(0.55, 0.8)
+		var rot := Basis(Vector3.UP, rng.randf_range(-0.3, 0.3)).scaled(Vector3.ONE * (sz / 0.7))
+		model("crate", n, {}, Transform3D(rot, Vector3(0, y, 0)))
+		y += sz
 	solid(n, Vector3(0.8, y, 0.8), Vector3(0, y / 2.0, 0))
 
 
@@ -408,22 +374,12 @@ func _diamond(w: float, h: float) -> ArrayMesh:
 
 ## 落地钟：钟摆露在外面来回摆，摆到两头“咔”一声
 func _grandfather(n: Node3D) -> void:
-	var wood: Material = m["dark_wood"]
-	room.box(Vector3(0.9, 0.6, 0.55), Vector3(0, 0.3, 0), wood, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.1, 1.6, 0.5), Vector3(-0.4, 1.4, 0), wood, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.1, 1.6, 0.5), Vector3(0.4, 1.4, 0), wood, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.9, 1.6, 0.06), Vector3(0, 1.4, -0.24), wood, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.95, 0.9, 0.6), Vector3(0, 2.65, 0), wood, false, Basis.IDENTITY, n)
-	_dial(n, Vector3(0, 2.65, 0.31), 0.33, 1.0)
+	model("grandfather", n)
+	_dial(n, Vector3(0, 2.65, 0.27), 0.33, 1.0)
 	var pend := Node3D.new()
 	pend.position = Vector3(0, 2.15, 0.05)
 	n.add_child(pend)
-	room.box(Vector3(0.02, 1.2, 0.02), Vector3(0, -0.6, 0), m["brass"], false, Basis.IDENTITY, pend)
-	var bob := CylinderMesh.new()
-	bob.top_radius = 0.12
-	bob.bottom_radius = 0.12
-	bob.height = 0.03
-	room.mesh_at(bob, Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, -1.2, 0)), m["brass"], pend)
+	model("pendulum", pend)
 	solid(n, Vector3(0.95, 3.1, 0.6), Vector3(0, 1.55, 0))
 	var tock: AudioStreamPlayer3D = room.sound(room.tick_wav(), Vector3(0, 1.5, 0), -4.0, 3.0, false, n)
 	tock.pitch_scale = 0.55
@@ -441,30 +397,14 @@ func _grandfather(n: Node3D) -> void:
 ## 挂钟：各走各的——有的飞转、有的倒走、有的停了
 func _clock(n: Node3D) -> void:
 	var r := rng.randf_range(0.25, 0.6)
-	var back := CylinderMesh.new()
-	back.top_radius = r * 1.15
-	back.bottom_radius = r * 1.15
-	back.height = 0.08
-	back.radial_segments = 32
-	room.mesh_at(back, Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0, 0.04)), m["dark_wood"], n)
+	model("clock_case", n, {}, Transform3D(Basis.from_scale(Vector3(r, r, 1.0)), Vector3.ZERO))
 	var speeds: Array[float] = [1.0, 3.0, 12.0, -2.0, -0.5, 0.0, 40.0]
 	_dial(n, Vector3(0, 0, 0.09), r, speeds[rng.randi_range(0, speeds.size() - 1)])
 
 
-## 表盘：盘面、12 个刻度、时针分针（speed = 分针每分钟几圈）
+## 表盘：盘面、刻度、铜圈（模型，按半径缩放），时针分针单独转（speed = 分针每分钟几圈）
 func _dial(n: Node3D, pos: Vector3, r: float, speed: float) -> void:
-	var disc := CylinderMesh.new()
-	disc.top_radius = r
-	disc.bottom_radius = r
-	disc.height = 0.02
-	disc.radial_segments = 32
-	room.mesh_at(disc, Transform3D(Basis(Vector3.RIGHT, PI / 2.0), pos), m["face"], n)
-	for i in 12:
-		var a := TAU * i / 12.0
-		var long := i % 3 == 0
-		room.box(Vector3(r * 0.04, r * (0.16 if long else 0.08), 0.01),
-			pos + Vector3(sin(a), cos(a), 0) * r * 0.82 + Vector3(0, 0, 0.015), m["black"],
-			false, Basis(Vector3.BACK, -a), n)
+	model("dial", n, {}, Transform3D(Basis.from_scale(Vector3(r, r, 1.0)), pos))
 	var minute := -TAU * speed / 60.0
 	for spec: Array in [[0.5, 0.07, minute / 12.0, 0.02], [0.78, 0.04, minute, 0.03]]:
 		var pivot := Node3D.new()
@@ -622,16 +562,7 @@ func _sink(n: Node3D) -> void:
 
 ## 三脚凳
 func _stool(n: Node3D) -> void:
-	var wood: Material = m["wood"] if rng.randf() < 0.6 else _metal()
-	var seat := CylinderMesh.new()
-	seat.top_radius = 0.17
-	seat.bottom_radius = 0.17
-	seat.height = 0.04
-	room.mesh_at(seat, Transform3D(Basis.IDENTITY, Vector3(0, 0.48, 0)), wood, n)
-	for i in 3:
-		var a := TAU * i / 3.0
-		room.box(Vector3(0.03, 0.5, 0.03), Vector3(cos(a) * 0.11, 0.24, sin(a) * 0.11), wood, false,
-			Basis(Vector3(-sin(a), 0, cos(a)), 0.12), n)
+	model("stool", n, {"wood": m["wood"] if rng.randf() < 0.6 else _metal()})
 	if rng.randf() < dread * 0.4:
 		n.rotation.x = deg_to_rad(90)
 		n.position.y += 0.17
@@ -683,18 +614,11 @@ func _lockers(n: Node3D) -> void:
 
 # ---------- 第三批 ----------
 
-## 候诊长椅：铁架、木条座面和靠背；不安的长椅上留着一件外套，像有人刚起身
+## 候诊长椅：铸铁侧架、木条座面和靠背；不安的长椅上留着一件外套，像有人刚起身
 func _bench(n: Node3D) -> void:
-	var frame := _metal()
-	for sx: float in [-0.8, 0.0, 0.8]:
-		room.box(Vector3(0.05, 0.44, 0.42), Vector3(sx, 0.22, 0.02), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.05, 0.5, 0.05), Vector3(sx, 0.7, -0.2), frame, false, Basis.IDENTITY, n)
-	for k in 3:
-		room.box(Vector3(1.8, 0.03, 0.12), Vector3(0, 0.45, -0.12 + k * 0.14), m["wood"], false, Basis.IDENTITY, n)
-	for k in 2:
-		room.box(Vector3(1.8, 0.1, 0.03), Vector3(0, 0.7 + k * 0.18, -0.21), m["wood"], false, Basis(Vector3.RIGHT, -0.12), n)
+	model("bench", n, {"frame": _metal()})
 	if rng.randf() < 0.2 + dread * 0.4:
-		room.box(Vector3(0.45, 0.06, 0.5), Vector3(rng.randf_range(-0.6, 0.6), 0.5, 0.02), m["cloth"], false,
+		room.box(Vector3(0.45, 0.06, 0.5), Vector3(rng.randf_range(-0.6, 0.6), 0.51, 0.02), m["cloth"], false,
 			Basis(Vector3.UP, rng.randf_range(-0.3, 0.3)), n)
 	if rng.randf() < dread * 0.5:
 		blood(n, Vector3(rng.randf_range(-0.6, 0.6), 0.004, 0.45), 0.6)
@@ -703,15 +627,7 @@ func _bench(n: Node3D) -> void:
 
 ## 课桌连椅：桌在前（+z），椅在后，坐着的人面朝 +z；不安的桌面上刻满了计数
 func _desk(n: Node3D) -> void:
-	var frame := _metal()
-	room.box(Vector3(0.7, 0.03, 0.45), Vector3(0, 0.72, 0.25), m["wood"], false, Basis(Vector3.RIGHT, 0.08), n)
-	room.box(Vector3(0.66, 0.12, 0.4), Vector3(0, 0.63, 0.25), m["dark_wood"], false, Basis.IDENTITY, n)
-	for sx: float in [-0.3, 0.3]:
-		room.box(Vector3(0.04, 0.7, 0.04), Vector3(sx, 0.35, 0.25), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.04, 0.03, 0.9), Vector3(sx, 0.03, 0.0), frame, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.04, 0.42, 0.04), Vector3(sx * 0.7, 0.21, -0.3), frame, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.44, 0.03, 0.36), Vector3(0, 0.43, -0.3), m["wood"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.44, 0.22, 0.03), Vector3(0, 0.66, -0.48), m["wood"], false, Basis.IDENTITY, n)
+	model("desk", n, {"frame": _metal()})
 	if rng.randf() < dread * 0.6:
 		blood(n, Vector3(rng.randf_range(-0.2, 0.2), 0.748, 0.25), 0.3)
 	solid(n, Vector3(0.7, 0.75, 1.0), Vector3(0, 0.375, 0))
@@ -747,11 +663,7 @@ func chalk(parent: Node3D, pos: Vector3, sz: float, kind: int) -> void:
 
 ## 长餐桌：桌布、两排椅子和两头各一把，每个座位一套餐具，正中一座烛台
 func _long_table(n: Node3D) -> void:
-	room.box(Vector3(2.6, 0.05, 1.0), Vector3(0, 0.76, 0), m["dark_wood"], false, Basis.IDENTITY, n)
-	room.box(Vector3(2.66, 0.01, 1.06), Vector3(0, 0.79, 0), m["sheet"], false, Basis.IDENTITY, n)
-	for sx: float in [-1.2, 1.2]:
-		for sz: float in [-0.42, 0.42]:
-			room.box(Vector3(0.06, 0.74, 0.06), Vector3(sx, 0.37, sz), m["dark_wood"], false, Basis.IDENTITY, n)
+	model("long_table", n, {"cloth": m["sheet"]})
 	var seats: Array[Transform3D] = []
 	for x: float in [-0.85, 0.0, 0.85]:
 		seats.append(Transform3D(Basis(Vector3.UP, PI), Vector3(x, 0, 0.75)))
@@ -763,18 +675,6 @@ func _long_table(n: Node3D) -> void:
 		c.transform = xf
 		n.add_child(c)
 		_chair(c)
-		var plate := CylinderMesh.new()
-		plate.top_radius = 0.12
-		plate.bottom_radius = 0.1
-		plate.height = 0.015
-		var o := xf.origin
-		var at := Vector3(o.x * (0.8 if absf(o.z) < 0.1 else 1.0), 0.8, o.z * 0.55)
-		room.mesh_at(plate, Transform3D(Basis.IDENTITY, at), m["porcelain"], n)
-	room.box(Vector3(0.06, 0.3, 0.06), Vector3(0, 0.94, 0), m["brass"], false, Basis.IDENTITY, n)
-	for sx: float in [-0.12, 0.0, 0.12]:
-		room.box(Vector3(0.03, 0.12, 0.03), Vector3(sx, 1.14, 0), m["wax"], false, Basis.IDENTITY, n)
-		room.box(Vector3(0.015, 0.03, 0.015), Vector3(sx, 1.215, 0), m["flame"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.3, 0.02, 0.03), Vector3(0, 1.08, 0), m["brass"], false, Basis.IDENTITY, n)
 	room.lamp(Vector3(0, 1.4, 0), Color(1.0, 0.66, 0.35), 0.8, 4.0, false, n)
 	if rng.randf() < dread:
 		blood(n, Vector3(rng.randf_range(-0.8, 0.8), 0.796, 0), 0.6)
