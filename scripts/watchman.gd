@@ -10,6 +10,7 @@ extends Node3D
 ## 它走到最后看见你的地方张望一会儿，再回去游荡。你走远了（换了一层、隔得太远），它就在你看不见的时候换到你附近。
 ## 追到你身边发出 caught，它停在你面前；接下来的事（黑屏、在低一层醒来）在 caught.gd，那边会让它退下（retreat）。
 ## 模型不常驻：快出场时由 creature_budget.gd 在后台加载、给名额，退下一阵后释放（灯也跟着模型走）。
+## 声音在 watchman_sounds.gd：脚步、钥匙叮当、火声，发现你、抓住你各一声。
 
 signal caught
 
@@ -17,6 +18,7 @@ const MODEL := "res://assets/models/watchman.glb"
 const CreatureMaterials = preload("res://scripts/creature_materials.gd")
 const CreatureBudget = preload("res://scripts/creature_budget.gd")
 const GridPath = preload("res://scripts/grid_path.gd")
+const Sounds = preload("res://scripts/watchman_sounds.gd")
 
 enum { HIDDEN, ROAM, ALERT, CHASE, SEARCH, HOLD }
 
@@ -57,6 +59,8 @@ var maze: Node3D
 var budget: Node                         # creature_budget.gd
 var paths: RefCounted                    # GridPath
 var idle_t := 0.0                        # 模型加载着、但没出场，已经多久了
+var sounds: Node3D                       # watchman_sounds.gd（常驻，跟着守夜人走）
+var last_step := 0                       # 走到第几步了（落脚时出声）
 var state := HIDDEN
 var timer := FIRST
 var route: Array[Vector2i] = []          # 要走的块
@@ -80,6 +84,8 @@ func _ready() -> void:
 	noise.frequency = 3.0
 	if maze:
 		paths = GridPath.new(maze.gen)
+	sounds = Sounds.new()
+	add_child(sounds)
 	visible = false
 
 
@@ -215,6 +221,7 @@ func _process(delta: float) -> void:
 					moved = _approach(player.global_position, CHASE_SPEED * delta, delta)
 				if _flat_dist(player.global_position) < REACH and absf(player.global_position.y - global_position.y) < 2.5:
 					state = HOLD
+					sounds.caught()
 					caught.emit()
 		SEARCH:
 			if seen:
@@ -239,6 +246,12 @@ func _process(delta: float) -> void:
 	else:
 		walked = move_toward(walked, roundf(walked / STRIDE) * STRIDE, delta * 1.5)
 	pose(walked)
+	# 每走一步（两腿交替时 sin 过零）落一次脚：脚步声、钥匙叮当
+	var step_i := floori(walked / STRIDE)
+	if step_i != last_step:
+		last_step = step_i
+		if moved > 0.0:
+			sounds.step(state == CHASE)
 
 
 ## ---------- 行为 ----------
@@ -275,9 +288,11 @@ func retreat(after: float) -> void:
 	route.clear()
 	seg_t = 1.0
 	visible = false
+	sounds.burn(false)
 
 
 func _alert() -> void:
+	sounds.alert()
 	state = ALERT
 	timer = ALERT_TIME
 	route.clear()
@@ -344,6 +359,7 @@ func _place() -> bool:
 		route.clear()
 		seg_t = 1.0
 		visible = true
+		sounds.burn(true)
 		return true
 	return false
 
