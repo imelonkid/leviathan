@@ -8,7 +8,7 @@ extends Node3D
 ## 或者你就在它身边——而且中间没有墙挡着。发现后它停下、灯一亮、转向你，接着追；比你走得快、比你跑得慢。
 ## 甩掉它：跑开、躲进屋里（它进不了房间）、爬上墙头、滑翔到下一层；看不见你 LOSE_TIME 秒后，
 ## 它走到最后看见你的地方张望一会儿，再回去游荡。你走远了（换了一层、隔得太远），它就在你看不见的时候换到你附近。
-## 追到你身边会发出 caught；抓到之后的事（黑屏、在低一层醒来）另做，现在它只是停在你面前。
+## 追到你身边发出 caught，它停在你面前；接下来的事（黑屏、在低一层醒来）在 caught.gd，那边会让它退下（retreat）。
 
 signal caught
 
@@ -224,6 +224,15 @@ func _process(delta: float) -> void:
 
 
 ## ---------- 行为 ----------
+
+## 抓完人退下：after 秒后再在你附近出现
+func retreat(after: float) -> void:
+	state = HIDDEN
+	timer = after
+	route.clear()
+	seg_t = 1.0
+	visible = false
+
 
 func _alert() -> void:
 	state = ALERT

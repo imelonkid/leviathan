@@ -7,6 +7,7 @@ const DIRS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), 
 
 var gen: RefCounted
 var blocked := {}                # 不让进的块（房间里、小房间的门）
+var connected := {}              # 从出生点走得到的块（找醒来的地方用，第一次用到时才算）
 
 
 func _init(g: RefCounted) -> void:
@@ -86,3 +87,27 @@ func nearest(p: Vector2i, radius := 2) -> Vector2i:
 				best = q
 				best_d = d
 	return best
+
+
+## 被抓后醒来的地方：地面高度为 floor_y 的那一层里、从出生点走得到的普通地面块，离 avoid 至少 min_gap 块；
+## 优先死胡同（三面是墙）。返回 {block, out: 朝开口的方向}；找不到返回空
+func wake_spot(floor_y: float, avoid: Vector2i, min_gap: int, rng: RandomNumberGenerator) -> Dictionary:
+	if connected.is_empty():
+		connected = reach(gen.spawn, 100000)
+	var ends: Array[Dictionary] = []
+	var others: Array[Dictionary] = []
+	for p: Vector2i in connected:
+		if gen.kind[p.y][p.x] != gen.FLOOR or absf(gen.height[p.y][p.x] - floor_y) > 0.5:
+			continue
+		if absi(p.x - avoid.x) + absi(p.y - avoid.y) < min_gap:
+			continue
+		var exits: Array[Vector2i] = []
+		for d in DIRS:
+			if _step_ok(p, p + d):
+				exits.append(d)
+		if exits.is_empty():
+			continue
+		var spot := {"block": p, "out": exits[rng.randi() % exits.size()]}
+		(ends if exits.size() == 1 else others).append(spot)
+	var pool := ends if not ends.is_empty() else others
+	return pool[rng.randi() % pool.size()] if not pool.is_empty() else {}

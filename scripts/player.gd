@@ -24,6 +24,7 @@ var last_safe := Vector3.ZERO    # 最近一次站稳的位置，掉进深渊后
 var maze: Node3D                 # main 注入：判断脚下是不是地面、迷宫边界
 var energy := 1.0                # 滑翔能量 0～1，能量条读它
 var gliding := false             # 这次离地后升过空：松开空格进入滑翔，落地结束
+var frozen := false              # 被守夜人抓住到醒过来之间：不响应移动和转视角（caught.gd 设置）
 var rising := false
 var ground_y := 0.0              # 所在层的地面高度（墙顶上不更新），升空上限以它为准
 var space_was_down := false
@@ -72,7 +73,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED or frozen:
 		return
 	if event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
@@ -91,7 +92,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## 方向键转视角：左右转身，上下抬头低头；速度在菜单里调
 func _process(delta: float) -> void:
 	var turn := Vector2.ZERO
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not frozen:
 		turn.x = float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT))
 		turn.y = float(Input.is_physical_key_pressed(KEY_UP)) - float(Input.is_physical_key_pressed(KEY_DOWN))
 	if turn == Vector2.ZERO:
@@ -111,8 +112,8 @@ func set_flying(on: bool) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# 菜单打开时（鼠标未锁定）不响应移动
-	var active := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	# 菜单打开时（鼠标未锁定）、被抓住时不响应移动
+	var active := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not frozen
 	var input := Vector2.ZERO
 	if active:
 		if Input.is_physical_key_pressed(KEY_W):
