@@ -149,6 +149,7 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 | v0.14 | Narrow arcaded houses built into the walls: two or three storeys, a row of arches with a porch you can shelter in (the doors behind are nailed shut), windows into derelict rooms, iron balconies, roofs you can land on; rain goes quieter under arches and porches | ✅ |
 | v0.15 | Distant sounds, all synthesized: iron dragged and dropped far away, chains, creaking doors, bell towers that really toll (you can steer by them), and a rare whisper behind you | ✅ |
 | v0.16 | Something in the maze: the hauler, a pale giant taller than the walls in a faded red coat too small for it, its head sealed inside a riveted old boiler with one faintly glowing porthole, dragging an iron plate on a chain across the far side of the maze; seen only from up high, and gone into the fog before you get close | ✅ |
+| v0.17 | Something hunts you: the watchman, a tall figure with an iron cage lantern for a head whose beam is how it sees. It wanders the streets near you, comes for you when you step into its light, and loses you if you run, hide indoors, climb the walls or glide down; if it catches you, you black out and wake up a tier lower, beside a drag mark. Recorded footsteps and keys (CC0), and creatures now load only when they appear | ✅ |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).
 
