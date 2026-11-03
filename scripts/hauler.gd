@@ -1,5 +1,5 @@
 extends Node3D
-## 拖链者：比墙还高、驼背的苍白巨物，穿着一身对它太小的旧衣服（褪色暗红外套、皮围裙、皮挽具、帆布裤、脏绷带），
+## 拖链者：比墙还高、驼背的苍白巨物，头焊在一截铆钉锅炉罐里（观察窗里透出一点暗光），穿着一身对它太小的旧衣服（褪色暗红外套、皮围裙、皮挽具、帆布裤、脏绷带），
 ## 挽具背后的铁环拴着链子，拖着一块锈铁板，在远处横穿过去。不攻击、不追人，也从不靠近——
 ## 你走近到 FADE_NEAR 以内，它就慢慢淡进雾里。每隔几分钟，你在屋外、又看得见远处的时候（街上两边的墙挡得死，
 ## 多半要在墙头步道、观景台、屋顶上或者滑翔时），它会在你前方 45～75 米处走过一段（约 36 米、二十几秒），
@@ -45,7 +45,6 @@ var travelled := 0.0
 var alpha := 0.0
 var leaving := false
 var sound_t := 0.0
-var t := 0.0
 
 
 func _ready() -> void:
@@ -86,7 +85,7 @@ func _materials() -> Dictionary:
 		"bandage": [Color(0.56, 0.51, 0.39), Color(0.65, 0.55, 0.42), 3.0, 0.3, 0.95, 0.0, false],
 		"brass": [Color(0.45, 0.33, 0.15), Color(0.6, 0.55, 0.5), 2.0, 0.2, 0.35, 0.8, false],
 		"iron": [Color(0.2, 0.11, 0.06), Color(0.5, 0.42, 0.4), 1.2, 0.6, 0.75, 0.5, false],
-		"dark": [Color(0.02, 0.012, 0.012), Color(1, 1, 1), 1.0, 0.0, 0.3, 0.0, false],
+		"glass": [Color(0.03, 0.035, 0.025), Color(1, 1, 1), 1.0, 0.0, 0.15, 0.0, false],
 	}
 	var out := {}
 	for k: String in spec:
@@ -98,7 +97,12 @@ func _materials() -> Dictionary:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH
 		if a[6]:
 			m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		if k != "dark":
+		if k == "glass":
+			# 锅炉罩的观察窗：玻璃后面透出一点发黄发绿的暗光，雾里远远看得见
+			m.emission_enabled = true
+			m.emission = Color(0.55, 0.6, 0.25)
+			m.emission_energy_multiplier = 0.8
+		else:
 			var noise := FastNoiseLite.new()
 			noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 			noise.frequency = 0.02
@@ -227,7 +231,6 @@ func _ground(p: Vector3) -> float:
 
 func _walk(delta: float, cam: Camera3D) -> void:
 	travelled += SPEED * delta
-	t += delta
 	var pos := from + dir * travelled
 	var near := Vector2(pos.x - cam.global_position.x, pos.z - cam.global_position.z).length() < FADE_NEAR
 	var indoor: bool = soundscape != null and soundscape.indoor
@@ -256,7 +259,7 @@ func _swing(name: String, angle: float) -> void:
 
 
 ## 按走过的距离摆姿势：反关节的腿一前一后迈、膝盖跟着折，长臂反着晃，身子一起一伏、左右轻晃，
-## 头一点一点、下颌慢慢开合；铁板拖在身后，链子从挽具背后的铁环拉到铁板
+## 锅炉罩一点一点；铁板拖在身后，链子从挽具背后的铁环拉到铁板
 func _pose(dist: float) -> void:
 	var ph := dist / STRIDE * PI
 	global_position = from + dir * dist
@@ -275,7 +278,6 @@ func _pose(dist: float) -> void:
 	_swing("spine3", sin(ph * 2.0) * 0.03)
 	_swing("neck", sin(ph * 2.0 + 0.6) * 0.06)
 	_swing("head", sin(ph * 2.0 + 1.2) * 0.05)
-	_swing("jaw", -0.08 - 0.08 * (0.5 + 0.5 * sin(t * 0.7)))
 	plate.global_position = global_position - dir * PLATE_BACK
 	plate.global_basis = Basis.looking_at(-dir, Vector3.UP) * Basis(Vector3.UP, sin(ph * 0.5) * 0.06)
 	var hook := plate.global_position + Vector3(0, 0.7, 0)

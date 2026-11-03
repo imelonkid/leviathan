@@ -1,12 +1,14 @@
 # 迷宫里的东西（原创造型，不参考任何影视角色），按参数生成，导出成 assets/models/creatures.glb。
-# 目前一种：拖链者——比墙还高、驼背的苍白巨物，细长下垂的头没有眼睛、下颌半张，反关节的腿，长到垂过膝盖的胳膊和长爪；
+# 目前一种：拖链者——比墙还高、驼背的苍白巨物，头整个焊在一截矮胖的旧锅炉铁罐里（满是铆钉和铁箍，前头圆顶上一个
+# 糊满污垢的观察窗，里面透出一点暗光），反关节的腿，长到垂过膝盖的胳膊和长爪；
 # 穿着一身对它太小的旧衣服：褪色的暗红呢子长外套（袖子只到肘弯、前襟敞着、下摆撕成条）、发黑的皮围裙、
 # 斜挎的皮挽具（背后一个铁环，拴着拖铁板的链子）、膝盖撑破的土黄帆布裤、小臂和脚踝缠着脏绷带。
 #
 # 身体用蒙皮修改器（Skin）沿一副“骨架”长出一整块连续的肉，再细分、置换出起伏；衣服是贴着身体的管子和布片。
 # 一副骨骼（hauler_rig）带着身体和衣服，权重按离哪根骨头近来分；走路的动作在游戏里按骨骼摆（scripts/hauler.gd）。
 # 另有两件不绑骨骼：hauler_plate（锈铁板，原点在拴链子的铁环）、hauler_chain（8 米长的链子，沿 +z，游戏里按长短伸缩）。
-# 材质槽：skin、coat、leather、canvas、bandage、brass、iron、dark（嘴里）。
+# 锅炉罩（hauler_helmet）整块绑在 head 骨头上，不跟着变形。
+# 材质槽：skin、coat、leather、canvas、bandage、brass、iron、glass（观察窗，游戏里微微发光）。
 #
 #   /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup \
 #       --python tools/blender/creatures.py -- assets/models/creatures.glb [预览图目录]
@@ -21,10 +23,10 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-SLOTS = ["skin", "coat", "leather", "canvas", "bandage", "brass", "iron", "dark"]
+SLOTS = ["skin", "coat", "leather", "canvas", "bandage", "brass", "iron", "glass"]
 COLORS = {"skin": (0.42, 0.4, 0.35), "coat": (0.3, 0.07, 0.05), "leather": (0.11, 0.07, 0.045),
           "canvas": (0.4, 0.31, 0.15), "bandage": (0.55, 0.5, 0.37), "brass": (0.45, 0.33, 0.15),
-          "iron": (0.17, 0.1, 0.06), "dark": (0.02, 0.012, 0.012)}
+          "iron": (0.17, 0.1, 0.06), "glass": (0.03, 0.035, 0.025)}
 
 
 def V(x, y, z):
@@ -43,8 +45,7 @@ SPINE_R = [1.2, 0.85, 1.7, 1.8, 1.05]          # 身体在这几处的粗细
 BONES = [
     ("spine1", SPINE[0], SPINE[1], None), ("spine2", SPINE[1], SPINE[2], "spine1"),
     ("spine3", SPINE[2], SPINE[3], "spine2"), ("spine4", SPINE[3], SPINE[4], "spine3"),
-    ("neck", SPINE[4], V(0, 12.9, 5.3), "spine4"), ("head", V(0, 12.9, 5.3), V(0, 11.2, 8.3), "neck"),
-    ("jaw", V(0, 12.4, 6.0), V(0, 10.95, 7.4), "head"),
+    ("neck", SPINE[4], V(0, 12.9, 5.3), "spine4"), ("head", V(0, 12.9, 5.3), V(0, 12.9, 5.3) + V(0, -0.42, 1).normalized() * 2.6, "neck"),
 ]
 for side, s in (("l", 1), ("r", -1)):
     BONES += [
@@ -189,8 +190,6 @@ def body():
         return first, len(pts) - 1
 
     spine0, neck = chain(list(zip(SPINE, SPINE_R)) + [(V(0, 13.4, 4.5), 0.55), (V(0, 12.9, 5.3), 0.45)])
-    head0, _ = chain([(V(0, 12.85, 5.9), 0.62), (V(0, 12.4, 6.9), 0.55), (V(0, 11.7, 7.8), 0.36), (V(0, 11.2, 8.3), 0.2)], neck)
-    chain([(V(0, 12.35, 6.0), 0.3), (V(0, 11.55, 6.8), 0.24), (V(0, 10.95, 7.4), 0.14)], head0)        # 下颌
     for s in (1, -1):
         _, toe = chain([(V(s * 1.0, 8.2, 0.0), 0.85), (V(s * 1.25, 5.6, 1.5), 0.5), (V(s * 1.15, 2.4, -1.1), 0.3),
                         (V(s * 1.15, 0.45, 0.15), 0.32), (V(s * 1.15, 0.15, 1.1), 0.18)], spine0)
@@ -236,7 +235,6 @@ def body():
     obj.data.materials.clear()
     for s in SLOTS:
         obj.data.materials.append(bpy.data.materials[s])
-    # 嘴里：下颌和头之间的缝里是黑的
     return obj
 
 
@@ -366,8 +364,55 @@ def clothes():
                 ring = [q + tilt @ ((V(1, 0, 0) * math.cos(2 * math.pi * j / 10) + d.cross(V(1, 0, 0)).normalized() * math.sin(2 * math.pi * j / 10)) * r)
                         for j in range(11)]
                 p.tube(ring, 0.06, "bandage", seg=5)
-    # 嘴里：头和下颌之间的缝里是黑的
-    p.ellipsoid(V(0, 11.95, 6.9), (0.32, 0.3, 0.75), "dark", Matrix.Rotation(0.7, 3, "X"))
+    return p.build()
+
+
+# ---------- 锅炉罩：头整个焊在里面 ----------
+
+def helmet():
+    p = Part("hauler_helmet")
+    a = V(0, -0.42, 1).normalized()                         # 罐子的轴：顺着脖子往前下
+    c0 = V(0, 12.95, 5.0)                                   # 罐底，脖子从这里插进去
+    L, R = 1.9, 1.05
+    x = V(1, 0, 0)
+    up = a.cross(x).normalized()
+    if up.y < 0:
+        up = -up
+
+    def around(c, n, r, k=24):
+        nx = V(1, 0, 0)
+        nu = n.cross(nx).normalized()
+        return [c + (nx * math.cos(2 * math.pi * i / k) + nu * math.sin(2 * math.pi * i / k)) * r for i in range(k + 1)]
+
+    # 罐身 + 前头的圆顶（截面一圈圈往前收）
+    prof = [(0.0, 0.62), (0.02, 0.95), (0.12, R), (L, R)] + [(L + 0.75 * math.sin(t * math.pi / 2), R * math.cos(t * math.pi / 2) + 0.001)
+                                                              for t in (0.2, 0.4, 0.6, 0.8, 1.0)]
+    p.tube([c0 + a * d for d, r in prof], [r for d, r in prof], "iron", seg=28, caps=True)
+    # 罐底的法兰：一圈厚铁边，皮肉被铁边磨得从里面翻出来
+    p.tube([c0 + a * 0.02, c0 + a * 0.18], [1.14, 1.14], "iron", seg=28, caps=True)
+    p.tube([c0 - a * 0.25, c0 + a * 0.05], [0.58, 0.7], "skin", seg=16)
+    # 三道铁箍，每道一圈铆钉
+    for d in (0.1, 0.95, L - 0.05):
+        p.tube([c0 + a * (d - 0.07), c0 + a * (d + 0.07)], [R + 0.05, R + 0.05], "iron", seg=28, caps=True)
+        for k in range(18):
+            ang = 2 * math.pi * k / 18
+            p.ellipsoid(c0 + a * d + (x * math.cos(ang) + up * math.sin(ang)) * (R + 0.07), (0.06, 0.06, 0.06), "iron", seg=6, rings=4)
+    for k in range(9):                                      # 侧面一条焊缝
+        p.ellipsoid(c0 + a * (0.2 + k * 0.2) + x * (R + 0.02), (0.05, 0.05, 0.05), "iron", seg=6, rings=4)
+    # 观察窗：圆顶前脸上，铜框里一块发绿、糊满污垢的玻璃
+    t = math.radians(55)
+    wn = (a * math.sin(t) + up * math.cos(t)).normalized()
+    wc = c0 + a * (L + 0.75 * math.sin(t)) + up * (R * math.cos(t)) + wn * 0.03
+    p.tube(around(wc, wn, 0.34), 0.07, "brass", seg=8)
+    p.tube([wc - wn * 0.1, wc + wn * 0.03], [0.3, 0.3], "glass", seg=20, caps=True)
+    for i, q in enumerate(around(wc + wn * 0.02, wn, 0.42, 6)[:6]):
+        p.ellipsoid(q, (0.05, 0.05, 0.05), "brass", seg=6, rings=4)
+    # 顶上一截弯掉的排气管、侧面一个碎了表盘的压力表
+    t0 = c0 + a * 0.9 + up * (R - 0.05)
+    p.tube([t0, t0 + up * 0.55 - a * 0.15, t0 + up * 0.7 - a * 0.45], [0.2, 0.2, 0.2], "iron", seg=10, caps=True)
+    gc = c0 + a * 1.35 - x * (R + 0.12) + up * 0.2
+    p.tube([gc + x * 0.12, gc - x * 0.08], [0.24, 0.24], "brass", seg=14, caps=True)
+    p.tube([gc - x * 0.08, gc - x * 0.1], [0.2, 0.2], "bandage", seg=14, caps=True)
     return p.build()
 
 
@@ -379,7 +424,8 @@ def seg_dist(q, a, b):
     return (a + ab * t - q).length
 
 
-def rig(objs):
+def rig(objs, rigid=()):
+    """objs 按离骨头远近分权重；rigid 里的整块绑在 head 上"""
     arm = bpy.data.armatures.new("hauler_rig")
     ao = bpy.data.objects.new("hauler_rig", arm)
     bpy.context.collection.objects.link(ao)
@@ -396,6 +442,11 @@ def rig(objs):
     for o in objs:
         groups = {name: o.vertex_groups.new(name=name) for name, h, t in segs}
         o.vertex_groups.new(name="ring")
+        if o in rigid:
+            groups["head"].add([v.index for v in o.data.vertices], 1.0, "REPLACE")
+            o.parent = ao
+            o.modifiers.new("Armature", "ARMATURE").object = ao
+            continue
         for v in o.data.vertices:
             g = Vector((v.co.x, v.co.z, -v.co.y))            # Blender → Godot
             ds = sorted(((seg_dist(g, h, t), name) for name, h, t in segs))
@@ -487,19 +538,26 @@ def main():
         bsdf.inputs["Roughness"].default_value = 0.6 if s in ("skin", "iron", "brass") else 0.95
     skin = body()
     cloth = clothes()
-    ao = rig([skin, cloth])
+    helm = helmet()
+    ao = rig([skin, cloth, helm], rigid=(helm,))
     pl = plate()
     ch = chain()
-    print("tris", sum(len(o.data.polygons) for o in (skin, cloth)))
+    print("faces", sum(len(o.data.polygons) for o in (skin, cloth, helm)))
     bpy.ops.object.select_all(action="DESELECT")
-    for o in (ao, skin, cloth, pl, ch):
+    for o in (ao, skin, cloth, helm, pl, ch):
         o.select_set(True)
     bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", use_selection=True, export_apply=True,
                               export_normals=True, export_skins=True, export_animations=False)
     print("exported", out)
     if len(argv) > 1:
+        # 预览里摆成游戏里的样子：铁板拖在身后，链子从铁板的环拉到挽具背后的铁环
         pl.location = B(V(1.0, 0.0, -9.0))
-        ch.hide_render = True
+        hook = V(1.0, 0.7, -9.0)
+        d = B(RING) - B(hook)
+        ch.location = B(hook)
+        ch.rotation_mode = "QUATERNION"
+        ch.rotation_quaternion = Vector((0, -1, 0)).rotation_difference(d.normalized())
+        ch.scale = (1.4, d.length / 8.0, 1.4)
         preview(argv[1])
 
 
