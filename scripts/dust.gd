@@ -1,15 +1,17 @@
 extends Node3D
-## 灰尘与碎屑。
-## 灰尘：跟着镜头的一团极细的尘粒（GPU 粒子），慢慢飘；用叠加混合的受光材质，
-## 平时只是若有若无的一点，提灯照过去才一粒粒亮起来。屋里、头顶有遮挡和窄巷更密，
-## 开阔处稀；露天下雨时被雨压下去。乌云低档时数量减半。
+## 落下的灰烬与碎屑。
+## 灰烬：跟着镜头的一团炭灰、纸灰碎片（GPU 粒子，ash.gdshader），跟着同一阵风斜着慢慢往下落，大片的翻转。
+## 不吃环境光和月光：暗处看不见，提灯照过去、闪电一亮才显形，背着亮天是黑色的剪影。
+## 屋里、头顶有遮挡和窄巷更密，开阔处稀；露天下雨时被雨打下来。乌云低档时数量减半。
 ## 碎屑：每隔一阵，身边某段墙的墙头掉下几块碎石，落地扬起一小团尘，带一声轻响（声音在代码里合成）。
 
 const MazeGen = preload("res://scripts/maze_gen.gd")
+const AshShader = preload("res://scripts/ash.gdshader")
 
 const RATE := 22050
-const AMOUNT := 700              # 灰尘粒数；乌云低档减半
-const BOX := Vector3(7, 3, 7)    # 灰尘在镜头周围多大一团（半宽、半高、半深，米）
+const AMOUNT := 1500             # 灰烬片数；乌云低档减半
+const BOX := Vector3(8, 4, 8)    # 灰烬在镜头周围多大一团（半宽、半高、半深，米）
+const WIND := Vector3(0.35, -0.45, 0.12)   # 灰烬落下的速度和风向（米/秒）
 const GRIT_MIN := 7.0            # 两次掉碎屑之间的间隔（秒）
 const GRIT_MAX := 18.0
 const GRIT_REACH := 4            # 在镜头周围几块以内找墙
@@ -61,20 +63,20 @@ func _build_dust() -> void:
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	pm.emission_box_extents = BOX
-	pm.direction = Vector3(1, 0.2, 0.3)
-	pm.spread = 180.0
-	pm.initial_velocity_min = 0.02
-	pm.initial_velocity_max = 0.12
-	pm.gravity = Vector3(0, -0.015, 0)
+	# 全体跟着同一阵风斜着往下落，只带一点点晃，不各飘各的
+	pm.direction = WIND.normalized()
+	pm.spread = 8.0
+	pm.initial_velocity_min = WIND.length() * 0.7
+	pm.initial_velocity_max = WIND.length() * 1.2
+	pm.gravity = Vector3.ZERO
 	pm.turbulence_enabled = true
-	pm.turbulence_noise_strength = 0.6
-	pm.turbulence_noise_scale = 3.0
-	pm.turbulence_noise_speed_random = 0.3
-	pm.turbulence_influence_min = 0.02
-	pm.turbulence_influence_max = 0.06
-	pm.scale_min = 0.5
-	pm.scale_max = 1.3
-	# 生出来和消失时都淡一下，不会一粒粒地蹦出来
+	pm.turbulence_noise_strength = 0.4
+	pm.turbulence_noise_scale = 4.0
+	pm.turbulence_influence_min = 0.005
+	pm.turbulence_influence_max = 0.02
+	pm.scale_min = 0.4
+	pm.scale_max = 1.2
+	# 生出来和消失时都淡一下，不会一片片地蹦出来
 	var fade := Gradient.new()
 	fade.set_color(0, Color(1, 1, 1, 0))
 	fade.set_color(1, Color(1, 1, 1, 0))
@@ -85,29 +87,9 @@ func _build_dust() -> void:
 	pm.color_ramp = ramp
 	particles.process_material = pm
 	var q := QuadMesh.new()
-	q.size = Vector2(0.045, 0.045)
-	var m := StandardMaterial3D.new()
-	# 叠加、受光：黑暗里几乎看不见，提灯一照就亮
-	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	m.vertex_color_use_as_albedo = true
-	m.albedo_color = Color(0.75, 0.7, 0.62)
-	var dot := GradientTexture2D.new()
-	dot.width = 16
-	dot.height = 16
-	dot.fill = GradientTexture2D.FILL_RADIAL
-	dot.fill_from = Vector2(0.5, 0.5)
-	dot.fill_to = Vector2(1.0, 0.5)
-	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1))
-	g.set_color(1, Color(0, 0, 0))
-	dot.gradient = g
-	m.albedo_texture = dot
-	m.roughness = 1.0
-	m.disable_receive_shadows = true
-	m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
-	m.distance_fade_min_distance = 0.15
-	m.distance_fade_max_distance = 0.5
+	q.size = Vector2(0.09, 0.09)
+	var m := ShaderMaterial.new()
+	m.shader = AshShader
 	q.material = m
 	particles.draw_pass_1 = q
 	add_child(particles)
@@ -122,7 +104,8 @@ func _process(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
-	particles.global_position = cam.global_position
+	# 往上风处偏一点：落到镜头这儿时正好在身边
+	particles.global_position = cam.global_position - WIND * 4.0
 	var indoor: bool = soundscape != null and soundscape.indoor
 	var open: float = soundscape.openness if soundscape else 0.5
 	var goal := lerpf(1.0, 0.25, open)
