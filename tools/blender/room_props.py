@@ -1,6 +1,8 @@
-# 房间道具（第一批）：铁床、摇椅、婴儿床、轮椅、瓷娃娃、人台，按参数生成，导出成 assets/models/room_props.glb。
+# 房间道具，按参数生成，导出成 assets/models/room_props.glb。
+# 第一批：铁床、摇椅、婴儿床、轮椅、瓷娃娃、人台；第二批（医疗类）：手术台、推床、输液架、推车、洗手池、浴缸、铁皮柜、柜子。
 # 每个物体一件（或一件的一个活动部分），按名字取；材质槽名字对应 scripts/rooms/props.gd 里的材质：
-#   frame（铁或锈，游戏里按不安程度挑）、wood、cloth、porcelain、black、skin、steel
+#   frame（铁或锈，游戏里按不安程度挑；铁皮柜是漆过的铁）、wood、cloth、porcelain、black、skin、steel、brass、glass
+#   （wood、glass、black 等槽在游戏里也可能被换掉：柜子有深浅两种木头，输液袋、浴缸和洗手池里的水不安时是血）
 #
 #   /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup \
 #       --python tools/blender/room_props.py -- assets/models/room_props.glb [预览图目录]
@@ -16,7 +18,7 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-SLOTS = ["frame", "wood", "cloth", "porcelain", "black", "skin", "steel"]
+SLOTS = ["frame", "wood", "cloth", "porcelain", "black", "skin", "steel", "brass", "glass"]
 COLORS = {
     "frame": ((0.2, 0.19, 0.18), 0.6, 0.7),
     "wood": ((0.24, 0.16, 0.1), 0.75, 0.0),
@@ -25,6 +27,8 @@ COLORS = {
     "black": ((0.03, 0.03, 0.03), 0.4, 0.3),
     "skin": ((0.62, 0.55, 0.5), 0.6, 0.0),
     "steel": ((0.5, 0.5, 0.5), 0.3, 0.9),
+    "brass": ((0.55, 0.42, 0.22), 0.35, 0.9),
+    "glass": ((0.25, 0.27, 0.28), 0.08, 0.95),
 }
 
 
@@ -165,6 +169,41 @@ class Part:
                [idx(i, nz) for i in range(nx, 0, -1)] + [idx(0, j) for j in range(nz, 0, -1)]
         for a, b in zip(ring, ring[1:] + ring[:1]):
             self.f([top[a], top[b], bot[b], bot[a]], slot, True)
+
+    def loft(self, rings, slot, cap_bottom=True, cap_top=True, corner=6, smooth=True, xf=None):
+        """一圈圈圆角矩形连起来：rings = [(高, 半宽 a, 半深 b, 圆角半径 r)]，从下往上（或从外壁绕到内壁）"""
+        xf = xf or Matrix.Identity(4)
+        ids = []
+        for y, a, b, r in rings:
+            ring = []
+            for cx, cz, a0 in ((a - r, b - r, 0.0), (-(a - r), b - r, 0.5), (-(a - r), -(b - r), 1.0), (a - r, -(b - r), 1.5)):
+                for k in range(corner + 1):
+                    t = math.pi * (a0 + 0.5 * k / corner)
+                    ring.append(self.v(xf @ V(cx + r * math.cos(t), y, cz + r * math.sin(t))))
+            ids.append(ring)
+        k = len(ids[0])
+        for a, b in zip(ids, ids[1:]):
+            for j in range(k):
+                self.f([a[j], a[(j + 1) % k], b[(j + 1) % k], b[j]], slot, smooth)
+        if cap_bottom:
+            self.f(list(reversed(ids[0])), slot)
+        if cap_top:
+            self.f(ids[-1], slot)
+
+    def sheet(self, xs, zs, fn, t, slot):
+        """一张有厚度的布：顶面高度 fn(x, z)，底面往下 t；xs、zs 是网格坐标"""
+        top = [[self.v(V(x, fn(x, z), z)) for x in xs] for z in zs]
+        bot = [[self.v(V(x, fn(x, z) - t, z)) for x in xs] for z in zs]
+        for j in range(len(zs) - 1):
+            for i in range(len(xs) - 1):
+                q = [(i, j), (i, j + 1), (i + 1, j + 1), (i + 1, j)]
+                self.f([top[b][a] for a, b in q], slot, True)
+                self.f([bot[b][a] for a, b in reversed(q)], slot, True)
+        nx, nz = len(xs) - 1, len(zs) - 1
+        edge = [(i, 0) for i in range(nx)] + [(nx, j) for j in range(nz)] + \
+               [(i, nz) for i in range(nx, 0, -1)] + [(0, j) for j in range(nz, 0, -1)]
+        for (a0, b0), (a1, b1) in zip(edge, edge[1:] + edge[:1]):
+            self.f([top[b0][a0], top[b1][a1], bot[b1][a1], bot[b0][a0]], slot, True)
 
     # ---------- 落成物体 ----------
 
@@ -397,6 +436,232 @@ def mannequin():
     b.build()
 
 
+# ======================= 第二批：医疗类 =======================
+
+def caster(p, c, slot="black"):
+    """一只小脚轮：叉子 + 轮子（轮子绕 x 轴）"""
+    p.torus(c, Matrix.Rotation(math.pi / 2, 4, "Z"), 0.03, 0.012, slot, 10, 4)
+    p.tube([c, c + V(0, 0.06, -0.02)], 0.007, "frame", 4)
+
+
+# ---------- 手术台：车削的立柱底座、三段台面（铁框 + 黑皮垫）、头枕；台面顶在 0.84 ----------
+
+def optable():
+    p = Part("optable")
+    p.loft([(0.0, 0.32, 0.42, 0.08), (0.06, 0.32, 0.42, 0.08), (0.08, 0.28, 0.38, 0.06)], "steel")       # 底盘
+    p.lathe([(0.11, 0.08), (0.11, 0.14), (0.075, 0.2), (0.07, 0.62), (0.09, 0.66), (0.09, 0.72), (0.0, 0.72)],
+            "steel", 16)                                                                              # 液压立柱
+    for z0, z1 in ((-1.0, -0.36), (-0.33, 0.33), (0.36, 1.0)):
+        zc, half = (z0 + z1) / 2, (z1 - z0) / 2
+        p.loft([(0.74, 0.37, half, 0.03), (0.78, 0.375, half, 0.03)], "steel", corner=3,
+               xf=Matrix.Translation(V(0, 0, zc)))                                                      # 铁框
+        p.loft([(0.78, 0.35, half - 0.02, 0.05), (0.825, 0.35, half - 0.02, 0.05), (0.84, 0.335, half - 0.035, 0.04)],
+               "black", corner=4, xf=Matrix.Translation(V(0, 0, zc)))                                    # 皮垫
+    for sx in (-0.39, 0.39):                                                                          # 两侧导轨
+        p.box(V(sx, 0.76, 0), (0.015, 0.03, 1.9), "steel")
+    p.box(V(0, 0.73, 0), (0.5, 0.03, 1.6), "steel")
+    p.loft([(0.84, 0.2, 0.15, 0.08), (0.9, 0.19, 0.14, 0.07), (0.92, 0.16, 0.11, 0.05)], "cloth",
+           xf=Matrix.Translation(V(0, 0, -0.85)))                                                     # 头枕
+    for sx in (-0.38, 0.38):                                                                          # 台边的绑带扣
+        for z in (-0.4, 0.2, 0.7):
+            p.box(V(sx, 0.8, z), (0.03, 0.05, 0.05), "steel")
+    p.build()
+
+
+# ---------- 停尸推床：铁框四脚带脚轮、浅边的不锈钢台面、两头推把；白布单独一件，盖着一个人形的起伏 ----------
+
+def gurney():
+    p = Part("gurney")
+    for sx in (-0.32, 0.32):
+        for sz in (-0.9, 0.9):
+            p.tube([V(sx, 0.09, sz), V(sx, 0.76, sz)], 0.016, "frame", 8)
+            caster(p, V(sx, 0.03, sz + 0.02))
+        p.tube([V(sx, 0.25, -0.9), V(sx, 0.25, 0.9)], 0.012, "frame", 6)                                # 下层横杆
+    for sz in (-0.9, 0.9):
+        p.tube([V(-0.32, 0.25, sz), V(0.32, 0.25, sz)], 0.012, "frame", 6)
+        p.tube([V(-0.3, 0.78, sz * 1.04), V(-0.3, 0.9, sz * 1.1), V(0.3, 0.9, sz * 1.1), V(0.3, 0.78, sz * 1.04)],
+               0.013, "frame", 8)                                                                     # 推把
+    p.loft([(0.76, 0.35, 1.0, 0.04), (0.78, 0.35, 1.0, 0.04)], "steel", corner=3)
+    p.loft([(0.78, 0.35, 1.0, 0.04), (0.81, 0.35, 1.0, 0.04), (0.81, 0.335, 0.985, 0.03), (0.785, 0.335, 0.985, 0.03)],
+           "steel", cap_bottom=False, cap_top=True, corner=3)                                         # 一圈浅边
+    p.build()
+
+    def body(x, z):
+        """布下面的人形：头、肩、胸腹、两条腿、脚尖朝上——都是圆滑的起伏，看不出细节"""
+        h = 0.0
+        h = max(h, 0.15 * math.exp(-((x / 0.11) ** 2 + ((z + 0.8) / 0.12) ** 2)))                      # 头
+        h = max(h, 0.19 * math.exp(-((x / 0.2) ** 4 + ((z + 0.25) / 0.38) ** 4)))                      # 躯干
+        for s in (-1, 1):
+            h = max(h, 0.12 * math.exp(-(((x - 0.1 * s) / 0.075) ** 2 + ((z - 0.5) / 0.4) ** 6)))      # 腿
+            h = max(h, 0.17 * math.exp(-(((x - 0.1 * s) / 0.06) ** 2 + ((z - 0.88) / 0.05) ** 2)))     # 脚尖
+        return h
+
+    def drape(x, z):
+        top = 0.815
+        ex = max(0.0, abs(x) - 0.36)
+        ez = max(0.0, abs(z) - 1.01)
+        if ex > 0 or ez > 0:
+            # 从台边垂下去，下摆有几道褶
+            e = max(ex, ez)
+            return top - min(0.45, e * 3.2) - 0.012 * math.sin(z * 23.0 + x * 17.0) * min(1.0, e * 10)
+        # 布绷在身体上，到台面上慢慢过渡
+        return top + body(x, z) * 0.95 + 0.004 * math.sin(x * 31.0) * math.sin(z * 13.0)
+
+    sh = Part("gurney_sheet")
+    xs = [-0.5 + i * 0.025 for i in range(41)]
+    zs = [-1.13 + i * 0.03 for i in range(76)]
+    sh.sheet(xs, zs, drape, 0.008, "cloth")
+    sh.build()
+
+
+# ---------- 输液架：钢杆、五脚带轮的底座、顶上两只弯钩；吊瓶单独一件（袋子 + 垂下来的管子） ----------
+
+def iv_stand():
+    p = Part("iv_stand")
+    p.tube([V(0, 0.08, 0), V(0, 1.86, 0)], 0.011, "steel", 8)
+    p.lathe([(0.0, 0.06), (0.03, 0.06), (0.03, 0.12), (0.016, 0.14), (0.0, 0.14)], "steel", 10)
+    p.lathe([(0.0, 1.0), (0.018, 1.0), (0.018, 1.05), (0.0, 1.05)], "steel", 8)                       # 调节箍
+    for i in range(5):
+        a = 2 * math.pi * i / 5
+        d = V(math.sin(a), 0, math.cos(a))
+        p.tube([V(0, 0.09, 0), d * 0.3 + V(0, 0.06, 0)], 0.01, "steel", 6)
+        caster(p, d * 0.3 + V(0, 0.0, 0))
+    for s in (-1, 1):
+        hook = [V(0, 1.86, 0), V(0.08 * s, 1.88, 0), V(0.14 * s, 1.88, 0), V(0.16 * s, 1.85, 0), V(0.15 * s, 1.82, 0),
+                V(0.13 * s, 1.83, 0)]
+        p.tube(hook, 0.006, "steel", 6)
+    p.build()
+
+    b = Part("iv_bag")
+    # 袋子：扁扁的软袋，底下窄一点，挂在右边的钩子上
+    b.loft([(1.6, 0.03, 0.012, 0.01), (1.63, 0.06, 0.022, 0.02), (1.72, 0.07, 0.028, 0.026),
+            (1.79, 0.065, 0.02, 0.019), (1.81, 0.04, 0.008, 0.007)], "glass", corner=4,
+           xf=Matrix.Translation(V(0.15, 0, 0)))
+    b.tube([V(0.15, 1.81, 0), V(0.15, 1.83, 0)], 0.004, "steel", 4)
+    b.tube([V(0.15, 1.6, 0), V(0.15, 1.5, 0)], 0.008, "glass", 6)                                         # 滴壶
+    tube = [V(0.15, 1.5, 0)]
+    for i in range(1, 12):
+        t = i / 11
+        tube.append(V(0.15 + 0.12 * math.sin(t * 2.5), 1.5 - t * 0.95, 0.06 * math.sin(t * 4.0)))
+    b.tube(tube, 0.003, "glass", 4)
+    b.build()
+
+
+# ---------- 手术推车：四根立柱带脚轮、两层带边的托盘、一头一根推把；上层托盘顶面在 0.89 ----------
+
+def cart():
+    p = Part("cart")
+    for sx in (-0.27, 0.27):
+        for sz in (-0.42, 0.42):
+            p.tube([V(sx, 0.08, sz), V(sx, 0.9, sz)], 0.012, "frame", 8)
+            caster(p, V(sx, 0.03, sz))
+    for y in (0.29, 0.875):
+        p.loft([(y, 0.3, 0.45, 0.03), (y + 0.015, 0.3, 0.45, 0.03)], "steel", corner=3)
+        p.loft([(y + 0.015, 0.3, 0.45, 0.03), (y + 0.045, 0.3, 0.45, 0.03), (y + 0.045, 0.29, 0.44, 0.025),
+                (y + 0.016, 0.29, 0.44, 0.025)], "steel", cap_bottom=False, cap_top=True, corner=3)
+    p.tube([V(-0.27, 0.92, -0.42), V(-0.27, 0.97, -0.5), V(0.27, 0.97, -0.5), V(0.27, 0.92, -0.42)], 0.011, "frame", 8)
+    p.build()
+
+
+# ---------- 洗手池：车削的立柱、圆角台盆、后挡板、冷热两个十字把手和鹅颈龙头；盆里的水单独一件 ----------
+
+def sink():
+    p = Part("sink")
+    p.lathe([(0.13, 0.0), (0.13, 0.03), (0.09, 0.06), (0.07, 0.35), (0.08, 0.62), (0.13, 0.72), (0.0, 0.72)],
+            "porcelain", 16, Matrix.Translation(V(0, 0, -0.05)))
+    # 台盆：外壁往上张开，翻过盆沿，再沿内壁下去到盆底
+    p.loft([(0.7, 0.2, 0.15, 0.12), (0.8, 0.28, 0.2, 0.15), (0.88, 0.3, 0.225, 0.15), (0.9, 0.3, 0.225, 0.15),
+            (0.905, 0.26, 0.185, 0.13), (0.85, 0.24, 0.16, 0.12), (0.78, 0.19, 0.12, 0.1)],
+           "porcelain", cap_bottom=True, cap_top=True, xf=Matrix.Translation(V(0, 0, 0.02)))
+    p.box(V(0, 0.98, -0.2), (0.6, 0.16, 0.05), "porcelain")                                                  # 后挡板
+    for s in (-1, 1):
+        x = 0.15 * s
+        p.tube([V(x, 0.9, -0.16), V(x, 0.95, -0.16)], 0.012, "steel", 8)
+        p.box(V(x, 0.955, -0.16), (0.07, 0.012, 0.012), "steel")
+        p.box(V(x, 0.955, -0.16), (0.012, 0.012, 0.07), "steel")
+    spout = [V(0, 0.9, -0.17), V(0, 1.02, -0.17), V(0, 1.06, -0.12), V(0, 1.04, -0.06), V(0, 1.0, -0.05)]
+    p.tube(spout, 0.012, "steel", 8)
+    p.build()
+
+    w = Part("sink_fill")
+    w.loft([(0.855, 0.22, 0.145, 0.11), (0.86, 0.22, 0.145, 0.11)], "black", xf=Matrix.Translation(V(0, 0, 0.02)))
+    w.build()
+
+
+# ---------- 浴缸：卷边的铸铁浴缸、四只爪形铜脚；缸里的水单独一件 ----------
+
+def bathtub():
+    p = Part("bathtub")
+    # 外壁从缸底往上张开、在顶上卷一道边，再沿内壁下去
+    p.loft([(0.17, 0.3, 0.72, 0.28), (0.3, 0.35, 0.8, 0.32), (0.58, 0.385, 0.84, 0.35), (0.64, 0.4, 0.86, 0.36),
+            (0.68, 0.395, 0.855, 0.355), (0.69, 0.37, 0.83, 0.34), (0.66, 0.34, 0.8, 0.31), (0.45, 0.31, 0.75, 0.28),
+            (0.28, 0.25, 0.66, 0.22), (0.24, 0.2, 0.58, 0.18)], "porcelain", corner=8)
+    for sx in (-0.26, 0.26):
+        for sz in (-0.6, 0.6):
+            # 爪形脚：弯下去的腿，底下一只抓地的爪
+            d = V(math.copysign(1, sx), 0, math.copysign(1, sz))
+            top = V(sx, 0.24, sz)
+            p.tube([top, top + d * 0.03 + V(0, -0.08, 0), top + d * 0.07 + V(0, -0.17, 0)], 0.028, "brass", 8)
+            foot = top + d * 0.08 + V(0, -0.2, 0)
+            p.ball(foot, 0.04, "brass", 10, (1.0, 0.7, 1.0))
+            for k in (-1, 0, 1):
+                toe = foot + (d + V(-d.z, 0, d.x) * k * 0.8).normalized() * 0.04
+                p.ball(toe + V(0, -0.015, 0), 0.016, "brass", 6, (1.0, 0.8, 1.3))
+    # 排水口和一根竖着的老式水管
+    p.lathe([(0.0, 0.0), (0.025, 0.0), (0.025, 0.01), (0.0, 0.01)], "brass", 8, Matrix.Translation(V(0, 0.245, -0.55)))
+    p.tube([V(0, 0.0, -0.95), V(0, 0.75, -0.95), V(0, 0.8, -0.9), V(0, 0.78, -0.8)], 0.014, "brass", 8)
+    p.build()
+
+    w = Part("bathtub_fill")
+    w.loft([(0.53, 0.33, 0.78, 0.3), (0.54, 0.33, 0.78, 0.3)], "black", corner=8)
+    w.build()
+
+
+# ---------- 一排铁皮柜：三格的柜体、底座、顶檐；门单独一件（原点在合页，往 -x 伸），上面有百叶缝和把手 ----------
+
+def lockers():
+    p = Part("lockers_body")
+    p.box(V(0, 0.95, 0.0), (1.4, 1.9, 0.48), "frame")
+    p.box(V(0, 0.04, 0.0), (1.42, 0.08, 0.5), "black")                                                       # 底座
+    p.box(V(0, 1.91, 0.0), (1.44, 0.03, 0.5), "frame")                                                       # 顶檐
+    for x in (-0.69, -0.23, 0.23, 0.69):                                                                     # 门框立边
+        p.box(V(x, 0.97, 0.235), (0.02, 1.84, 0.02), "frame")
+    p.build()
+
+    d = Part("locker_door")
+    d.box(V(-0.21, 0.97, 0), (0.42, 1.84, 0.02), "frame")
+    for row in (1.62, 0.35):                                                                                 # 上下两组百叶缝
+        for k in range(5):
+            d.box(V(-0.21, row + k * 0.045, 0.012), (0.24, 0.012, 0.008), "black")
+    d.box(V(-0.38, 1.0, 0.02), (0.025, 0.12, 0.03), "steel")                                                 # 把手
+    d.box(V(-0.21, 1.3, 0.012), (0.08, 0.05, 0.005), "steel")                                                # 号牌
+    for y in (0.3, 1.6):                                                                                     # 合页
+        d.tube([V(-0.005, y, 0.0), V(-0.005, y + 0.08, 0.0)], 0.008, "steel", 6)
+    d.build()
+
+
+# ---------- 柜子：带顶冠和踢脚的木柜；两扇门各一件（原点在合页），门上嵌一块凸起的门板和铜把手 ----------
+
+def cabinet():
+    p = Part("cabinet")
+    p.box(V(0, 0.98, 0), (0.96, 1.8, 0.48), "wood")
+    p.box(V(0, 0.04, 0.01), (1.0, 0.08, 0.5), "wood")                                                        # 踢脚
+    p.loft([(1.88, 0.5, 0.25, 0.01), (1.9, 0.52, 0.27, 0.01), (1.95, 0.53, 0.28, 0.01), (1.98, 0.5, 0.26, 0.01)],
+           "wood", corner=1)                                                                               # 顶冠线脚
+    p.build()
+
+    for side, name in ((1, "cabinet_door_r"), (-1, "cabinet_door_l")):
+        d = Part(name)
+        cx = -side * 0.245
+        d.box(V(cx, 1.0, 0), (0.48, 1.8, 0.03), "wood")
+        for y0, y1 in ((0.2, 0.95), (1.05, 1.8)):                                                            # 两块凸起的门板
+            d.box(V(cx, (y0 + y1) / 2, 0.02), (0.36, y1 - y0, 0.015), "wood")
+            d.box(V(cx, (y0 + y1) / 2, 0.03), (0.3, y1 - y0 - 0.06, 0.01), "wood")
+        d.box(V(-side * 0.44, 1.0, 0.035), (0.02, 0.14, 0.02), "brass")
+        d.ball(V(-side * 0.44, 1.07, 0.04), 0.015, "brass", 8)
+        d.build()
+
+
 def preview(objs, out_dir):
     world = bpy.data.worlds.new("dim")
     world.use_nodes = True
@@ -422,7 +687,7 @@ def preview(objs, out_dir):
     cam = bpy.data.objects.new("cam", cam_data)
     bpy.context.collection.objects.link(cam)
     sc.camera = cam
-    cam.location = (0.0, -6.5, 2.2)
+    cam.location = (0.0, -9.0, 2.6)
     cam.rotation_euler = (Vector((0, 0, 0.6)) - cam.location).to_track_quat("-Z", "Y").to_euler()
     sc.render.filepath = os.path.join(out_dir, "room_props_preview.png")
     bpy.ops.render.render(write_still=True)
@@ -441,7 +706,8 @@ def main():
         bsdf.inputs["Base Color"].default_value = (*col, 1.0)
         bsdf.inputs["Roughness"].default_value = rough
         bsdf.inputs["Metallic"].default_value = metal
-    for build in (bed, rocking_chair, crib, wheelchair, doll, mannequin):
+    for build in (bed, rocking_chair, crib, wheelchair, doll, mannequin,
+                  optable, gurney, iv_stand, cart, sink, bathtub, lockers, cabinet):
         build()
     objs = [o for o in bpy.data.objects]
     bpy.ops.object.select_all(action="DESELECT")
@@ -454,14 +720,22 @@ def main():
         # 预览：一字排开（娃娃放大两倍看得清）
         place = {"bed_frame": (-4.3, 0), "bed_mattress": (-4.3, 0), "rocking_chair": (-2.6, 0), "crib": (-1.0, 0),
                  "wheelchair": (0.7, 0), "doll_body": (1.9, 0), "doll_head": (1.9, 0),
-                 "mannequin_stand": (3.2, 0), "mannequin_body": (3.2, 0)}
+                 "mannequin_stand": (3.2, 0), "mannequin_body": (3.2, 0),
+                 "optable": (-4.6, 2.6), "gurney": (-3.4, 2.6), "gurney_sheet": (-3.4, 2.6), "iv_stand": (-2.4, 2.6),
+                 "iv_bag": (-2.4, 2.6), "cart": (-1.5, 2.6), "sink": (-0.5, 2.6), "sink_fill": (-0.5, 2.6),
+                 "bathtub": (0.6, 2.6), "bathtub_fill": (0.6, 2.6), "lockers_body": (2.0, 2.6),
+                 "locker_door": (1.77, 2.85), "cabinet": (3.5, 2.6), "cabinet_door_r": (4.0, 2.855),
+                 "cabinet_door_l": (3.0, 2.855)}
         for o in objs:
             x, z = place[o.name]
             o.location = (x, -z, 0.0)
             if o.name.startswith("doll"):
                 o.scale = (2.5, 2.5, 2.5)
                 o.location = (x, -z, 0.27 * 2.5 if o.name == "doll_head" else 0.0)
-            o.rotation_euler = (0, 0, math.radians(-25))
+            if z < 1:
+                o.rotation_euler = (0, 0, math.radians(-25))
+            if o.name == "locker_door":
+                o.rotation_euler = (0, 0, math.radians(70))        # 开着一扇
         preview(objs, argv[1])
 
 
