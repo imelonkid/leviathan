@@ -110,6 +110,11 @@ class Minimap extends Control:
 			draw_line(a, a + f * level * cell, Color(0.85, 0.78, 0.55, 0.95), cell * 0.6)
 			if o["stair"] > 0:
 				draw_line(a + f * level * cell, a + f * (level + o["stair"]) * cell, Color(0.75, 0.5, 0.25), cell * 0.6)
+		for pb: Dictionary in gen.plaza_bridges:
+			var a := (Vector2(pb["start"]) + Vector2(0.5, 0.5)) * cell
+			draw_line(a, a + Vector2(pb["dir"]) * (pb["span"] + 1) * cell, Color(0.85, 0.78, 0.55, 0.95), cell * 0.6)
+			var at := (Vector2(pb["stair_at"]) + Vector2(0.5, 0.5)) * cell
+			draw_line(at, at + Vector2(pb["stair_dir"]) * MazeGen.PLAZA_STAIR_BLOCKS * cell, Color(0.75, 0.5, 0.25), cell * 0.6)
 		var center := Vector2(n, n) * cell / 2.0
 		draw_circle(center, cell * 1.2, Color(0.6, 0.75, 1.0, 0.8))
 

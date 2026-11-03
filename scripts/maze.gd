@@ -112,6 +112,7 @@ func build() -> void:
 	_build_walkway_rails()
 	_build_spans()
 	_build_overpasses()
+	_build_plaza_bridges()
 	_build_floors()
 	for z in n:
 		for x in n:
@@ -309,6 +310,16 @@ func _build_walkway_rails() -> void:
 				var f := Vector3(d.x, 0, d.y)
 				var edge := center + f * (block - RAIL_T) / 2.0
 				var size := Vector3(RAIL_T, 0, block) if d.x != 0 else Vector3(block, 0, RAIL_T)
+				if _plaza_bridge_end(Vector2i(x, z), d):
+					# 广场高架桥从这里接上步道：护墙只留桥面两旁的两小段
+					var w := (block - FLY_DECK_W) / 2.0
+					var side := Vector3(absf(f.z), 0, absf(f.x))
+					size = size - side * (block - w)
+					for s: float in [-1.0, 1.0]:
+						var c := edge + side * s * (FLY_DECK_W + w) / 2.0
+						_add_box(wall_boxes, c + Vector3(0, top + WALK_RAIL_H / 2.0, 0), size + Vector3(0, WALK_RAIL_H, 0), Basis.IDENTITY, false)
+						_add_collider(c + Vector3(0, top + WALK_RAIL_BLOCK_H / 2.0, 0), size + Vector3(0, WALK_RAIL_BLOCK_H, 0))
+					continue
 				_add_box(wall_boxes, edge + Vector3(0, top + WALK_RAIL_H / 2.0, 0), size + Vector3(0, WALK_RAIL_H, 0), Basis.IDENTITY, false)
 				_add_collider(edge + Vector3(0, top + WALK_RAIL_BLOCK_H / 2.0, 0), size + Vector3(0, WALK_RAIL_BLOCK_H, 0))
 
@@ -394,6 +405,44 @@ func _build_overpasses() -> void:
 			_add_collider(start + f * (length + 0.3) + Vector3(0, deck + RAIL_BLOCK_H / 2.0, 0), _flat(f, RAIL_T, RAIL_BLOCK_H, FLY_DECK_W))
 			continue
 		_build_hanging_stair(start + f * length, out, deck, o["stair"])
+
+
+func _plaza_bridge_end(b: Vector2i, d: Vector2i) -> bool:
+	for pb: Dictionary in gen.plaza_bridges:
+		var start: Vector2i = pb["start"]
+		var dir: Vector2i = pb["dir"]
+		if b == start and d == dir or b == start + dir * (pb["span"] + 1) and d == -dir:
+			return true
+	return false
+
+
+## 广场高架桥：两头搭在步道上的桥面、龙骨和齐膝的护墙（同步道）；楼梯接上来的那一段护墙断开，
+## 楼梯是两块悬空楼梯，从桥边往下落到广场地面
+func _build_plaza_bridges() -> void:
+	for pb: Dictionary in gen.plaza_bridges:
+		var start: Vector2i = pb["start"]
+		var dir: Vector2i = pb["dir"]
+		var sd: Vector2i = pb["stair_dir"]
+		var deck: float = pb["deck"]
+		var f := Vector3(dir.x, 0, dir.y)
+		var s := Vector3(sd.x, 0, sd.y)
+		var a := _block_to_world(start.x, start.y) + f * block / 2.0
+		var length: float = pb["span"] * block
+		_add_box(wall_boxes, a + f * length / 2.0 + Vector3(0, deck - FLY_DECK_T / 2.0, 0), _flat(f, length, FLY_DECK_T, FLY_DECK_W))
+		_add_box(wall_boxes, a + f * length / 2.0 + Vector3(0, deck - FLY_DECK_T - FLY_KEEL_H / 2.0, 0), _flat(f, length, FLY_KEEL_H, FLY_KEEL_W), Basis.IDENTITY, false)
+		var at := _block_to_world(pb["stair_at"].x, pb["stair_at"].y)
+		var off := (at - a).dot(f)   # 楼梯中线离桥头多远
+		var gap := FLY_STAIR_W + 0.2
+		for side: float in [-1.0, 1.0]:
+			var pieces: Array = [[0.0, length]]
+			if s.dot(Vector3(-f.z, 0, f.x)) * side > 0.0:
+				pieces = [[0.0, off - gap / 2.0], [off + gap / 2.0, length]]
+			for pc: Array in pieces:
+				var l: float = pc[1] - pc[0]
+				var c: Vector3 = a + Vector3(-f.z, 0, f.x) * side * (FLY_DECK_W - RAIL_T) / 2.0 + f * (pc[0] + l / 2.0)
+				_add_box(wall_boxes, c + Vector3(0, deck + WALK_RAIL_H / 2.0, 0), _flat(f, l, WALK_RAIL_H, RAIL_T), Basis.IDENTITY, false)
+				_add_collider(c + Vector3(0, deck + WALK_RAIL_BLOCK_H / 2.0, 0), _flat(f, l, WALK_RAIL_BLOCK_H, RAIL_T))
+		_build_hanging_stair(at + s * FLY_DECK_W / 2.0, sd, deck, MazeGen.PLAZA_STAIR_BLOCKS)
 
 
 ## 悬空楼梯：从 top（桥面尽头，高 deck）朝 out 一块块往下，每块降 STAIR_RISE
