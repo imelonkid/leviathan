@@ -9,11 +9,13 @@ extends Node3D
 ## 甩掉它：跑开、躲进屋里（它进不了房间）、爬上墙头、滑翔到下一层；看不见你 LOSE_TIME 秒后，
 ## 它走到最后看见你的地方张望一会儿，再回去游荡。你走远了（换了一层、隔得太远），它就在你看不见的时候换到你附近。
 ## 追到你身边发出 caught，它停在你面前；接下来的事（黑屏、在低一层醒来）在 caught.gd，那边会让它退下（retreat）。
+## 模型不常驻：快出场时由 creature_budget.gd 在后台加载、给名额，退下一阵后释放（灯也跟着模型走）。
 
 signal caught
 
-const Model = preload("res://assets/models/watchman.glb")
+const MODEL := "res://assets/models/watchman.glb"
 const CreatureMaterials = preload("res://scripts/creature_materials.gd")
+const CreatureBudget = preload("res://scripts/creature_budget.gd")
 const GridPath = preload("res://scripts/grid_path.gd")
 
 enum { HIDDEN, ROAM, ALERT, CHASE, SEARCH, HOLD }
@@ -52,7 +54,9 @@ var noise := FastNoiseLite.new()
 var t := 0.0
 var player: CharacterBody3D              # main 注入
 var maze: Node3D
+var budget: Node                         # creature_budget.gd
 var paths: RefCounted                    # GridPath
+var idle_t := 0.0                        # 模型加载着、但没出场，已经多久了
 var state := HIDDEN
 var timer := FIRST
 var route: Array[Vector2i] = []          # 要走的块
@@ -74,8 +78,16 @@ func _ready() -> void:
 	rng.randomize()
 	noise.seed = rng.randi()
 	noise.frequency = 3.0
-	model = Model.instantiate()
+	if maze:
+		paths = GridPath.new(maze.gen)
+	visible = false
+
+
+## 拿到模型：实例化、记下骨骼、换上材质、在提灯里挂上灯
+func _build(scene: PackedScene) -> void:
+	model = scene.instantiate()
 	add_child(model)
+	idle_t = 0.0
 	for c in model.find_children("*", "Skeleton3D", true, false):
 		skel = c
 	for i in skel.get_bone_count():
@@ -106,16 +118,26 @@ func _ready() -> void:
 	gaze.shadow_enabled = true
 	gaze.transform = head_rest * Transform3D(Basis.looking_at(Vector3(0, -0.35, 1)), LANTERN + Vector3(0, 0, 0.12))
 	att.add_child(gaze)
-	if maze:
-		paths = GridPath.new(maze.gen)
-	visible = false
+
+
+## 退下一阵了：释放模型（灯、材质跟着走），还回名额
+func _unload() -> void:
+	model.queue_free()
+	model = null
+	skel = null
+	lamp = null
+	gaze = null
+	flame = null
+	bones.clear()
+	mats.clear()
+	budget.release(self)
 
 
 ## 材质（creature_materials.gd）；玻璃半透，火不受光照、自己发光
 func _materials() -> Dictionary:
 	var spec := {
 		# 槽: [底色, 斑块颜色（乘在底色上）, 纹理密度, 凹凸, 粗糙度, 金属度, 双面]
-		"skin": [Color(0.44, 0.42, 0.38), Color(0.72, 0.62, 0.68), 1.6, 0.5, 0.5, 0.0, false],
+		"skin": [Color(0.44, 0.42, 0.38), Color(0.72, 0.6, 0.66), 1.6, 0.5, 0.5, 0.0, false],
 		"coat": [Color(0.14, 0.15, 0.12), Color(0.55, 0.5, 0.45), 1.8, 0.45, 0.95, 0.0, true],
 		"cape": [Color(0.1, 0.105, 0.09), Color(0.55, 0.5, 0.45), 1.8, 0.45, 0.95, 0.0, true],
 		"leather": [Color(0.09, 0.06, 0.045), Color(0.6, 0.5, 0.45), 3.0, 0.4, 0.6, 0.0, false],
@@ -138,21 +160,17 @@ func _materials() -> Dictionary:
 
 func _process(delta: float) -> void:
 	t += delta
+	if paths == null or player == null:
+		return
+	if state == HIDDEN:
+		_hidden(delta)
+		return
 	# 火苗一跳一跳：灯和火的亮度跟着噪声走；发现你、追你的时候更亮
 	glare = move_toward(glare, 1.8 if state in [ALERT, CHASE, HOLD] else 1.0, delta * 2.0)
 	var f := (0.85 + 0.15 * noise.get_noise_1d(t * 10.0) + 0.05 * sin(t * 23.0)) * glare
 	lamp.light_energy = 1.2 * f
 	gaze.light_energy = 6.0 * f
 	flame.emission_energy_multiplier = 4.0 * f
-	if paths == null or player == null:
-		return
-	if state == HIDDEN:
-		timer -= delta
-		if timer <= 0.0:
-			timer = 5.0
-			if _place():
-				state = ROAM
-		return
 	sight_t -= delta
 	if sight_t <= 0.0:
 		sight_t = 0.15
@@ -225,10 +243,35 @@ func _process(delta: float) -> void:
 
 ## ---------- 行为 ----------
 
+## 没出场：快到点时在后台加载模型，到点拿名额、在你附近找地方出来；退下太久就把模型释放
+func _hidden(delta: float) -> void:
+	timer -= delta
+	if model == null:
+		if timer < CreatureBudget.PREFETCH:
+			budget.prefetch(MODEL)
+		if timer > 0.0:
+			return
+		var scene: PackedScene = budget.take(self, MODEL)
+		if scene == null:
+			timer = 2.0                   # 名额满了或者还没加载完
+			return
+		_build(scene)
+	else:
+		idle_t += delta
+		if idle_t > CreatureBudget.KEEP and timer > CreatureBudget.PREFETCH:
+			_unload()
+			return
+	if timer <= 0.0:
+		timer = 5.0
+		if _place():
+			state = ROAM
+
+
 ## 抓完人退下：after 秒后再在你附近出现
 func retreat(after: float) -> void:
 	state = HIDDEN
 	timer = after
+	idle_t = 0.0
 	route.clear()
 	seg_t = 1.0
 	visible = false

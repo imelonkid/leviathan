@@ -5,9 +5,11 @@ extends Node3D
 ## 多半要在墙头步道、观景台、屋顶上或者滑翔时），它会在你前方 45～75 米处走过一段（约 36 米、二十几秒），
 ## 铁板拖地的声音从它那里传来（借 distant_sounds.gd 的“远处的金属”）。
 ## 模型来自 tools/blender/creatures.py（creatures.glb）：身体和衣服绑在一副骨骼上，走路的动作在这里按骨骼摆。
+## 模型不常驻：快出场时由 creature_budget.gd 在后台加载、给名额，退场一阵后释放。
 
-const Creatures = preload("res://assets/models/creatures.glb")
+const MODEL := "res://assets/models/creatures.glb"
 const CreatureMaterials = preload("res://scripts/creature_materials.gd")
+const CreatureBudget = preload("res://scripts/creature_budget.gd")
 
 const FIRST_MIN := 70.0          # 开局后多久第一次可能出现（秒）
 const FIRST_MAX := 110.0
@@ -28,8 +30,9 @@ var player: Node3D               # main 注入
 var maze: Node3D
 var soundscape: Node
 var distant: Node                # distant_sounds.gd：借它的“远处的金属”放拖地声
+var budget: Node                 # creature_budget.gd
 
-var model: Node3D
+var model: Node3D                # 没加载时是 null
 var skel: Skeleton3D
 var bones := {}                  # 骨头名 → 下标
 var rest := {}                   # 骨头名 → 静止时的局部旋转
@@ -46,13 +49,20 @@ var travelled := 0.0
 var alpha := 0.0
 var leaving := false
 var sound_t := 0.0
+var idle_t := 0.0                # 模型加载着、但没在走，已经多久了
 
 
 func _ready() -> void:
 	rng.randomize()
 	next_t = rng.randf_range(FIRST_MIN, FIRST_MAX)
-	model = Creatures.instantiate()
+	visible = false
+
+
+## 拿到模型：实例化、把铁板和链子摘出来单独摆、记下骨骼、换上材质
+func _build(scene: PackedScene) -> void:
+	model = scene.instantiate()
 	add_child(model)
+	idle_t = 0.0
 	plate = model.find_child("hauler_plate", true, false)
 	chain = model.find_child("hauler_chain", true, false)
 	for n: Node3D in [plate, chain]:
@@ -67,7 +77,17 @@ func _ready() -> void:
 		rest[name] = skel.get_bone_rest(i).basis.get_rotation_quaternion()
 		axis[name] = (skel.get_bone_global_rest(i).basis.inverse() * Vector3.RIGHT).normalized()
 	CreatureMaterials.apply(self, _materials(), "skin")
-	visible = false
+
+
+## 退场一阵了：释放模型，还回名额
+func _unload() -> void:
+	for n: Node in [model, plate, chain]:
+		n.queue_free()
+	model = null
+	skel = null
+	bones.clear()
+	mats.clear()
+	budget.release(self)
 
 
 ## 材质（creature_materials.gd）；锅炉罩的观察窗另加一点自发光
@@ -100,6 +120,20 @@ func _process(delta: float) -> void:
 		return
 	if not walking:
 		next_t -= delta
+		if model == null:
+			if next_t < CreatureBudget.PREFETCH:
+				budget.prefetch(MODEL)
+			if next_t <= 0.0:
+				var scene: PackedScene = budget.take(self, MODEL)
+				if scene == null:
+					next_t = 2.0          # 名额满了或者还没加载完
+					return
+				_build(scene)
+		else:
+			idle_t += delta
+			if idle_t > CreatureBudget.KEEP and next_t > CreatureBudget.PREFETCH:
+				_unload()
+				return
 		if next_t <= 0.0:
 			var indoor: bool = soundscape != null and soundscape.indoor
 			next_t = rng.randf_range(GAP_MIN, GAP_MAX) if not indoor and start(cam) else RETRY
@@ -191,6 +225,7 @@ func _walk(delta: float, cam: Camera3D) -> void:
 	if leaving and alpha <= 0.0:
 		walking = false
 		visible = false
+		idle_t = 0.0
 		return
 	for m in mats:
 		m.albedo_color.a = alpha
