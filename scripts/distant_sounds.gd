@@ -8,7 +8,8 @@ extends Node
 ## 两声之间至少隔 MIN_GAP 秒；被黑光吸走声音时不放；大雨盖住一部分远处的声音；在屋里远处的声音发闷。
 ## 声音全部在代码里合成（开局在后台线程里合成，不卡画面），走 World 总线（跟着分区混响和“吸走”）。
 
-const RATE := 22050
+const Synth = preload("res://scripts/synth.gd")
+const RATE := Synth.RATE
 const MIN_GAP := 20.0            # 两声之间至少隔多久（秒）
 const MAX_GAP := 55.0
 const BELL_MIN := 150.0          # 钟楼多久敲一次
@@ -357,29 +358,12 @@ func _bell_wav() -> AudioStreamWAV:
 
 ## 二阶带通（状态变量形式），st 是滤波器状态（low, band）
 func _bandpass(x: float, freq: float, q: float, st: Array) -> float:
-	var f := 2.0 * sin(PI * freq / RATE)
-	var low: float = st[0] + f * st[1]
-	var high: float = x - low - st[1] / q
-	var band: float = st[1] + f * high
-	st[0] = low
-	st[1] = band
-	return band
+	return Synth.bandpass(x, freq, q, st)
 
 
 func _fade_out(s: PackedFloat32Array, seconds: float) -> PackedFloat32Array:
-	var m := int(seconds * RATE)
-	for i in mini(m, s.size()):
-		s[s.size() - 1 - i] *= float(i) / m
-	return s
+	return Synth.fade_out(s, seconds)
 
 
 func _wav(samples: PackedFloat32Array) -> AudioStreamWAV:
-	var data := PackedByteArray()
-	data.resize(samples.size() * 2)
-	for i in samples.size():
-		data.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32767.0))
-	var w := AudioStreamWAV.new()
-	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = RATE
-	w.data = data
-	return w
+	return Synth.wav(samples)

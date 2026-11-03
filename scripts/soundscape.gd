@@ -7,7 +7,8 @@ extends Node
 ## 只剩很轻的耳鸣和自己的呼吸；扫过去以后音量先回来，高频再慢慢回来，像耳朵重新打开。
 ## 声音全部在代码里合成，不用素材文件。
 
-const RATE := 22050
+const Synth = preload("res://scripts/synth.gd")
+const RATE := Synth.RATE
 const PROBE_EVERY := 0.2
 const PROBE_RANGE := 40.0
 const HUM_UNIT := 140.0          # 利维坦低鸣的衰减尺度（米）：越大，远近差别越小
@@ -212,15 +213,4 @@ func _breath_wav() -> AudioStreamWAV:
 
 
 func _wav(samples: PackedFloat32Array, loop: bool) -> AudioStreamWAV:
-	var data := PackedByteArray()
-	data.resize(samples.size() * 2)
-	for i in samples.size():
-		data.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32767.0))
-	var w := AudioStreamWAV.new()
-	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = RATE
-	w.data = data
-	if loop:
-		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		w.loop_end = samples.size()
-	return w
+	return Synth.wav(samples, loop)
