@@ -190,12 +190,12 @@ func _physics_process(delta: float) -> void:
 	cam.position.y = sin(bob_t) * 0.04
 
 
-## 脚下所在层的地面高度；站在墙顶上返回 NAN（不更新升空上限）
+## 脚下所在层的地面高度；站在墙顶上返回 NAN（不更新升空上限）；站在飞桥上按桥面算
 func _tier_floor() -> float:
 	if maze == null:
 		return global_position.y
 	var b: Vector2 = maze.world_to_block(global_position)
-	return maze.gen.tier_floor(int(floor(b.x)), int(floor(b.y)))
+	return maze.gen.ground_tier(int(floor(b.x)), int(floor(b.y)), global_position.y)
 
 
 ## 不让滑翔越过最外圈围墙

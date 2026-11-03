@@ -102,6 +102,14 @@ class Minimap extends Control:
 		for room: Dictionary in gen.rooms:
 			var r: Rect2i = room["rect"]
 			draw_rect(Rect2(Vector2(r.position) * cell, Vector2(r.size) * cell), Color(0.45, 0.16, 0.12, 0.95))
+		# 飞桥：压在下层街道上面的一条细线，悬空楼梯那段是楼梯色
+		for o: Dictionary in gen.overpasses:
+			var a := (Vector2(o["root"]) + Vector2(0.5, 0.5)) * cell
+			var f := Vector2(o["out"])
+			var level: float = o["level"] + 0.5
+			draw_line(a, a + f * level * cell, Color(0.85, 0.78, 0.55, 0.95), cell * 0.6)
+			if o["stair"] > 0:
+				draw_line(a + f * level * cell, a + f * (level + o["stair"]) * cell, Color(0.75, 0.5, 0.25), cell * 0.6)
 		var center := Vector2(n, n) * cell / 2.0
 		draw_circle(center, cell * 1.2, Color(0.6, 0.75, 1.0, 0.8))
 

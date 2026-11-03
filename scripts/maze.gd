@@ -30,6 +30,12 @@ const RAIL_BLOCK_H := 2.4
 const WALK_RAIL_H := 0.7         # 墙顶步道两侧的矮护墙：看得出是条路；碰撞稍高，能跳过去
 const WALK_RAIL_BLOCK_H := 1.0
 const SPAN_DECK := 0.8            # 步道跨过通道处桥面的厚度
+const FLY_DECK_W := 3.0           # 飞桥：桥面宽、厚，桥下龙骨的宽和高
+const FLY_DECK_T := 0.8
+const FLY_KEEL_W := 1.6
+const FLY_KEEL_H := 1.0
+const FLY_STAIR_W := 2.4          # 悬空楼梯的宽度、每级台阶石块的厚度
+const FLY_STEP_T := 0.9
 const GATE_R := 1.7              # 拱门：门洞半宽、起拱高度、拱门这段墙的高度和厚度
 const GATE_SPRING := 3.2
 const GATE_H := 6.0
@@ -105,6 +111,7 @@ func build() -> void:
 	_build_band_rails()
 	_build_walkway_rails()
 	_build_spans()
+	_build_overpasses()
 	_build_floors()
 	for z in n:
 		for x in n:
@@ -330,8 +337,89 @@ func _build_band_rails() -> void:
 				var f := Vector3(d.x, 0, d.y)
 				var edge := center + f * (block - RAIL_T) / 2.0
 				var size := Vector3(RAIL_T, 0, block) if d.x != 0 else Vector3(block, 0, RAIL_T)
+				if _overpass_root(Vector2i(x, z), d):
+					# 飞桥从这条边伸出去：栏杆只留桥面两旁的两小段
+					var w := (block - FLY_DECK_W) / 2.0
+					var side := Vector3(absf(f.z), 0, absf(f.x))
+					size = size - side * (block - w)
+					for s: float in [-1.0, 1.0]:
+						var c := edge + side * s * (FLY_DECK_W + w) / 2.0
+						_add_box(wall_boxes, c + Vector3(0, top + RAIL_H / 2.0, 0), size + Vector3(0, RAIL_H, 0), Basis.IDENTITY, false)
+						_add_collider(c + Vector3(0, top + RAIL_BLOCK_H / 2.0, 0), size + Vector3(0, RAIL_BLOCK_H, 0))
+					continue
 				_add_box(wall_boxes, edge + Vector3(0, top + RAIL_H / 2.0, 0), size + Vector3(0, RAIL_H, 0), Basis.IDENTITY, false)
 				_add_collider(edge + Vector3(0, top + RAIL_BLOCK_H / 2.0, 0), size + Vector3(0, RAIL_BLOCK_H, 0))
+
+
+func _overpass_root(b: Vector2i, d: Vector2i) -> bool:
+	for o: Dictionary in gen.overpasses:
+		if o["root"] == b and o["out"] == d:
+			return true
+	return false
+
+
+## 飞桥：从观景台边沿水平伸出去的桥面，下面一道龙骨，两边齐腰的栏杆（碰撞做到 RAIL_BLOCK_H，
+## 从下层升空也翻不上来）。断桥的尽头参差地断开，也拦一道看不见的栏杆；
+## 通的那座桥面尽头接三块悬空楼梯：一级级石块叠成，前两块悬着（下面照样走人），最后一块落地是实心的，
+## 比通道窄，两旁还能挤过去
+func _build_overpasses() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_value + 5
+	for o: Dictionary in gen.overpasses:
+		var root: Vector2i = o["root"]
+		var out: Vector2i = o["out"]
+		var deck: float = o["deck"]
+		var broken: bool = o["stair"] == 0
+		var f := Vector3(out.x, 0, out.y)
+		var side := Vector3(-f.z, 0, f.x)
+		var start := _block_to_world(root.x, root.y) + f * block / 2.0
+		var length: float = o["level"] * block
+		var slab := length - (1.2 if broken else 0.0)
+		var keel := slab - (1.0 if broken else 0.0)
+		_add_box(wall_boxes, start + f * slab / 2.0 + Vector3(0, deck - FLY_DECK_T / 2.0, 0), _flat(f, slab, FLY_DECK_T, FLY_DECK_W))
+		_add_box(wall_boxes, start + f * keel / 2.0 + Vector3(0, deck - FLY_DECK_T - FLY_KEEL_H / 2.0, 0), _flat(f, keel, FLY_KEEL_H, FLY_KEEL_W), Basis.IDENTITY, false)
+		for s: float in [-1.0, 1.0]:
+			var rail := length - (r.randf_range(0.6, 2.4) if broken else 0.0)
+			var c := start + side * s * (FLY_DECK_W - RAIL_T) / 2.0 + f * rail / 2.0
+			_add_box(wall_boxes, c + Vector3(0, deck + RAIL_H / 2.0, 0), _flat(f, rail, RAIL_H, RAIL_T), Basis.IDENTITY, false)
+			_add_collider(c + Vector3(0, deck + RAIL_BLOCK_H / 2.0, 0), _flat(f, rail, RAIL_BLOCK_H, RAIL_T))
+		if broken:
+			# 断口：三条宽窄的碎板，各自伸出不同的长度、往下塌一点
+			var piece := FLY_DECK_W / 3.0
+			for i in 3:
+				var reach := r.randf_range(0.2, 1.6)
+				var sag := r.randf_range(0.0, 0.25)
+				var c := start + f * (slab + reach / 2.0) + side * (i - 1) * piece
+				_add_box(wall_boxes, c + Vector3(0, deck - sag - FLY_DECK_T / 2.0, 0), _flat(f, reach, FLY_DECK_T, piece * 0.92))
+			_add_collider(start + f * (length + 0.3) + Vector3(0, deck + RAIL_BLOCK_H / 2.0, 0), _flat(f, RAIL_T, RAIL_BLOCK_H, FLY_DECK_W))
+			continue
+		_build_hanging_stair(start + f * length, out, deck, o["stair"])
+
+
+## 悬空楼梯：从 top（桥面尽头，高 deck）朝 out 一块块往下，每块降 STAIR_RISE
+func _build_hanging_stair(top: Vector3, out: Vector2i, deck: float, blocks: int) -> void:
+	var f := Vector3(out.x, 0, out.y)
+	var rise := MazeGen.STAIR_RISE
+	var depth := block / STEPS
+	for j in blocks:
+		var ground := j == blocks - 1
+		for i in STEPS:
+			var h := deck - j * rise - (i + 0.5) * rise / STEPS
+			var bottom := deck - blocks * rise if ground else h - FLY_STEP_T
+			var c := top + f * (j * block + (i + 0.5) * depth) + Vector3(0, (h + bottom) / 2.0, 0)
+			_add_box(floor_boxes, c, _flat(f, depth, h - bottom, FLY_STAIR_W), Basis.IDENTITY, false)
+			if ground and h - bottom > 0.5:
+				# 落地那块是实心的：碰撞比台阶低一点，藏在坡道下面，免得绊脚
+				_add_collider(c - Vector3(0, 0.15, 0), _flat(f, depth, h - bottom - 0.3, FLY_STAIR_W))
+		var rot := _slope_basis(-out, rise, block)
+		var lo := deck - (j + 1) * rise
+		var c := top + f * (j + 0.5) * block + Vector3(0, lo + rise / 2.0, 0) - rot.y * 0.1
+		_add_collider(c, Vector3(FLY_STAIR_W, 0.2, sqrt(block * block + rise * rise)), rot)
+
+
+## 顺着 f（水平、沿 x 或 z）摆的方块尺寸：长 length、高 h、宽 w
+func _flat(f: Vector3, length: float, h: float, w: float) -> Vector3:
+	return Vector3(length, h, w) if f.x != 0.0 else Vector3(w, h, length)
 
 
 ## 按行合并：同样高度的连续平地合成一根实心柱
