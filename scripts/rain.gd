@@ -3,7 +3,8 @@ extends Node3D
 ## 和身边打在石头、铁栏杆上的雨点（3D，一声一声的）。
 ## 天气一段一段地随机来：每段 2～6 分钟，约三成五是停雨（只剩乌云和干打雷），下雨的那段大小也随机；
 ## 两段之间 10～20 秒慢慢变过去，雨丝渐稀、雨声渐收。
-## 走进屋里（soundscape.indoor）看不见雨，雨声变闷变小，身边的雨点停掉。
+## 走进屋里（soundscape.indoor）看不见雨，雨声变闷变小，身边的雨点停掉；
+## 站在门洞、拱廊下面（soundscape.covered）雨丝照样看得见，雨声收一半、变闷一些。
 ## 声音走 Rain 总线，Rain 再送进 World 总线，跟着分区混响走。
 
 const RATE := 22050
@@ -135,7 +136,11 @@ func _process(delta: float) -> void:
 	wet = move_toward(wet, level, delta / (WET_TIME if level > wet else DRY_TIME))
 	RenderingServer.global_shader_parameter_set("wetness", wet)
 	RenderingServer.global_shader_parameter_set("rain", level)
-	var target := 1.0 if soundscape and soundscape.indoor else 0.0
+	var target := 0.0
+	if soundscape and soundscape.indoor:
+		target = 1.0
+	elif soundscape and soundscape.covered:
+		target = 0.45
 	inside = move_toward(inside, target, delta * 1.5)
 
 	var fwd := -cam.global_basis.z

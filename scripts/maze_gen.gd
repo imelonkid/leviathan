@@ -20,7 +20,9 @@ extends RefCounted
 ## - 每层有一间带屋顶的大房间，四周原有的通道都是拱门门洞；另有十来间小房间（死胡同的格子），
 ##   门是厚墙上的窄拱门。屋里长什么样由 scripts/rooms/ 在玩家走近时按种子组合出来；
 ## - 每层几座地标：墙角上立起的塔楼（钟楼、望楼、尖塔），横跨长直街的门楼，高出墙头，远远认得出；
-## - 部分隔墙是拱廊墙：墙身开一排透空的拱洞，看得见隔壁，过不去（庭院围墙上更多）。
+## - 部分隔墙是拱廊墙：墙身开一排透空的拱洞，看得见隔壁，过不去（庭院围墙上更多）；
+## - 第 1、2 层各两栋带拱廊的小楼：一段沿着直街的三块墙（墙角、墙、墙角）整段换成两三层的窄楼，
+##   底层朝街一排拱，拱后是 2 米深、能进去避雨的廊子（穿不过去，迷宫走法不变）。
 
 enum { WALL, FLOOR, STAIR, BRIDGE, PLATFORM, VOID, PARAPET, TERRACE }
 
@@ -43,6 +45,8 @@ const WALKWAY_MAX := 40                # 两个庭院之间的墙顶步道最长
 const TOWERS_PER_TIER := 4
 const GATEHOUSES_PER_TIER := 2
 const LANDMARK_GAP := 8                # 两座地标至少隔多少块
+const HOUSES_PER_TIER := 2             # 带拱廊的小楼：每层几栋（最外一层只有两格宽、挨着挡土墙，放不下）
+const HOUSE_GAP := 5                   # 小楼离塔楼、门楼和别的小楼至少隔多少块
 enum { TOWER_BELL, TOWER_WATCH, TOWER_SPIRE }
 const FLY_STAIR_BAND := 6              # 这圈观景台伸出一座“通”的飞桥：平桥接悬空楼梯落到下层街上
 const FLY_BROKEN_BANDS: Array[int] = [2, 10]   # 这几圈各伸出一座断在半空的飞桥
@@ -70,7 +74,9 @@ var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块；大�
 var walkway: Array = []           # walkway[z][x]：这块的顶上是步道（庭院围墙和连接它们的墙），顶高记在 wall_top
 var towers: Array[Dictionary] = [] # 塔楼：{block: 墙角块, kind: TOWER_*, base: 本层地面高度}
 var gatehouses: Array[Dictionary] = [] # 门楼：{block: 跨过的通道块, along_x: 街是否沿 x, base}
-var landmark: Array = []          # landmark[z][x]：被地标占了的块（塔楼、门楼的两个墩子和楼下的通道），墙面不再加窗和装饰件
+var landmark: Array = []          # landmark[z][x]：被地标占了的块（塔楼、门楼的两个墩子和楼下的通道、小楼），墙面不再加窗和装饰件
+var houses: Array[Dictionary] = [] # 小楼：{block: 中间那块墙, along: 楼身沿哪个方向, face: 朝街的一面, base, storeys: 2 / 3, arches: 3 / 5, balcony: bool}
+var house: Array = []             # house[z][x]：这块墙被小楼占了（maze.gd 不再砌墙，由楼身代替）
 var overpasses: Array[Dictionary] = [] # 飞桥：{root: 观景台上的起点块, out: 朝外的方向, level: 平桥几块, stair: 悬空楼梯几块（0 = 断桥）, deck: 桥面高度, base: 下层地面高度}
 var plaza_bridges: Array[Dictionary] = [] # 广场高架桥：{start: 桥头那块围墙, dir: 过桥的方向, span: 跨过几块, deck: 桥面高度, base: 广场地面, stair_at: 楼梯接在桥上哪一块, stair_dir: 楼梯从桥边往下走的方向}
 var overpass: Array = []          # overpass[z][x]：头顶有飞桥或悬空楼梯，记下层地面高度；没有是 NAN
@@ -97,12 +103,14 @@ func generate(seed_value: int) -> void:
 	walkway = _grid(false)
 	span = _grid(false)
 	landmark = _grid(false)
+	house = _grid(false)
 	overpass = _grid(NAN)
 	overpasses.clear()
 	plaza_bridges.clear()
 	jumps.clear()
 	towers.clear()
 	gatehouses.clear()
+	houses.clear()
 	courtyards.clear()
 	rooms.clear()
 	chasms.clear()
@@ -128,6 +136,7 @@ func generate(seed_value: int) -> void:
 	_make_overpasses()
 	_make_plaza_bridges()
 	_make_landmarks()
+	_make_houses()
 
 
 ## 格子到中心的距离（切比雪夫距离，按格子计）
@@ -960,9 +969,73 @@ func _make_landmarks() -> void:
 			made += 1
 
 
-func _far_from(p: Vector2i, others: Array[Vector2i]) -> bool:
+## 小楼：每层挑几段沿直街的三块墙，离别的地标远一点
+func _make_houses() -> void:
+	var taken: Array[Vector2i] = []
+	for t: Dictionary in towers:
+		taken.append(t["block"])
+	for g: Dictionary in gatehouses:
+		taken.append(g["block"])
+	var spots: Array = []
+	for t in TOP_TIER:
+		spots.append([])
+	for z in range(3, n - 3):
+		for x in range(3, n - 3):
+			if (x % 2 == 0) == (z % 2 == 0):
+				continue
+			var c := Vector2i(x, z)
+			var along := Vector2i(0, 1) if x % 2 == 0 else Vector2i(1, 0)
+			var perp := Vector2i(along.y, along.x)
+			for face: Vector2i in [perp, -perp]:
+				var f := c + face
+				if kind[f.y][f.x] != FLOOR:
+					continue
+				var base: float = height[f.y][f.x]
+				var t := int(base / TIER_H + 0.001)
+				if t < TOP_TIER and _house_ok(c, along, face, base):
+					spots[t].append([c, along, face, base])
+	for t in TOP_TIER:
+		_shuffle(spots[t])
+		var made := 0
+		for sp: Array in spots[t]:
+			if made >= HOUSES_PER_TIER:
+				break
+			var c: Vector2i = sp[0]
+			if not _far_from(c, taken, HOUSE_GAP):
+				continue
+			var along: Vector2i = sp[1]
+			for k in [-1, 0, 1]:
+				var q: Vector2i = c + along * k
+				landmark[q.y][q.x] = true
+				house[q.y][q.x] = true
+			houses.append({"block": c, "along": along, "face": sp[2], "base": sp[3],
+				"storeys": rng.randi_range(2, 3), "arches": 3 if rng.randf() < 0.5 else 5, "balcony": rng.randf() < 0.5})
+			taken.append(c)
+			made += 1
+
+
+## 三块普通墙（不是矮墙、步道、拱廊墙、地标），朝街那面三块都是本层的平地（直街），周围安静
+func _house_ok(c: Vector2i, along: Vector2i, face: Vector2i, base: float) -> bool:
+	for k in [-1, 0, 1]:
+		var q: Vector2i = c + along * k
+		if kind[q.y][q.x] != WALL or walkway[q.y][q.x] or landmark[q.y][q.x] or arcade[q.y][q.x]:
+			return false
+		if not _quiet(q, base):   # 挡土墙、外圈墙旁边有高一层的地面或观景台，这一条就排除了
+			return false
+		var f: Vector2i = q + face
+		if kind[f.y][f.x] != FLOOR or span[f.y][f.x] or doorway[f.y][f.x] or arch[f.y][f.x]:
+			return false
+		if not is_equal_approx(height[f.y][f.x], base):
+			return false
+	for r in courtyards:
+		if r.grow(1).has_point(c):
+			return false
+	return true
+
+
+func _far_from(p: Vector2i, others: Array[Vector2i], gap := LANDMARK_GAP) -> bool:
 	for o in others:
-		if maxi(absi(o.x - p.x), absi(o.y - p.y)) < LANDMARK_GAP:
+		if maxi(absi(o.x - p.x), absi(o.y - p.y)) < gap:
 			return false
 	return true
 

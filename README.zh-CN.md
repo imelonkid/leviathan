@@ -40,12 +40,13 @@ godot --path .
 
 ## 重新生成模型
 
-建筑装饰件、地标和房间道具由 Blender 脚本生成（需要 Blender 4.2 以上），改了 `tools/blender/` 下的脚本后：
+建筑装饰件、地标、小楼和房间道具由 Blender 脚本生成（需要 Blender 4.2 以上），改了 `tools/blender/` 下的脚本后：
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/trim_kit.py -- assets/models/trim_kit.glb
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/landmarks.py -- assets/models/landmarks.glb
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/room_props.py -- assets/models/room_props.glb
+/Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/houses.py -- assets/models/houses.glb
 ```
 
 `landmarks.py` 后面再加一个目录参数，会顺便渲一张预览图到那里。
@@ -99,7 +100,7 @@ Esc 菜单里有低 / 中 / 高三档预设，也可以单独调整：
 - **矮墙**：同层的部分隔墙降成 1.4 米高，能看见隔壁走道却过不去。
 - **拱廊墙**：部分隔墙的墙身开着并排两个穿透整块墙的拱洞，能看见隔壁，走不过去也滑翔不过去；庭院围墙上更多。
 - **建筑装饰件**：墙顶一道挑出的压檐，墙根一道基座，墙角朝街的一面立着壁柱和柱头，拱门两面贴着一圈楔形拱石和拱心石。模型由 `tools/blender/trim_kit.py` 在 Blender 里按参数生成，导出成 `assets/models/trim_kit.glb`，游戏里用同一个墙面着色器（浅一点、不怎么剥落）成批摆放。
-- **地标**：每层几座塔楼立在墙角上，高出墙头十几二十米——钟楼（四面开拱的钟室、四坡尖顶）、望楼（顶上一圈垛口）、尖塔（方塔转八角、细长尖顶），优先靠近庭院；每层还有两座门楼横跨长直街，两头带尖顶的墩子，楼身下面是 7.5 米高的门洞。远远认得出，可以当路标。由 `tools/blender/landmarks.py` 生成 `assets/models/landmarks.glb`，小地图上是白色小方块。
+- **地标**：每层几座塔楼立在墙角上，高出墙头十几二十米——钟楼（四面开拱的钟室、四坡尖顶）、望楼（顶上一圈垛口）、尖塔（方塔转八角、细长尖顶），优先靠近庭院；每层还有两座门楼横跨长直街，两头带尖顶的墩子，楼身下面是 7.5 米高的门洞。远远认得出，可以当路标。由 `tools/blender/landmarks.py` 生成 `assets/models/landmarks.glb`，小地图上是白色小方块。第 1、2 层还各有两栋**带拱廊的小楼**（里层地方小，有时只放得下一栋）：沿直街的一段墙整段换成两三层的窄楼，底层朝街一排三个或五个拱，拱后是 2 米深的廊子，里面是钉死的门和窗，能进去避雨但穿不过去（迷宫走法不变）；楼上一排排拱窗，窗后也是那种荒凉的屋子，有的二楼挂着铁阳台；坡屋顶站得住。由 `tools/blender/houses.py` 生成 `assets/models/houses.glb`，小地图上是沿墙的一道白条。
 - **飞桥**：三圈观景台各伸出一座 3 米宽的飞桥，水平越过下一层的墙头，离下面的街 12 米，桥下的墙压低一截，从街上抬头能看见桥悬在头顶。中间那圈的一座是通的：桥面尽头接三段一级级石块叠成的悬空楼梯，落到下层的街上（下面照样走人），是上下两层之间的一条近路；另外两座断在半空，只能走到断口往下看。小地图上是一道浅黄的细线，楼梯那段是橙色。
 - **广场高架桥**：每个 25 米见方的大广场上空，在墙顶步道的高度横架一座桥，把两边围墙顶的步道直接连起来，桥下照样是广场。桥中段一侧接一段悬空楼梯，石块一级级叠到广场地面，是从广场爬上步道网的第二条路。
 - **庭院与墙顶步道**：每层有两个 2×2 格子打通成的方形庭院（15 米见方），第 1、2 层再各有一个 3×3 格子的大广场（25 米见方），围墙统一 8 米高。院里贴着一面墙有两段楼梯，爬到一块和墙顶齐平的挑台，从挑台走上围墙顶。通进院子的路口上方架着桥面，围墙顶完整地绕院子一圈；同一层的庭院之间，沿着迷宫的墙把一串墙顶统一到 8 米，遇到通道就从上面跨过去（下面是两道拱的短隧道），连成一张墙顶步道网，两侧有齐膝的矮护墙。小地图上步道是浅黄色。
@@ -118,7 +119,7 @@ Esc 菜单里有低 / 中 / 高三档预设，也可以单独调整：
 - **风暴**：天空是光线步进的体积乌云（`sky.gdshader`），云顶亮、云底暗，背光的边缘透出亮边。利维坦腰部缠着一圈浓重的体积云（`cloud_ring.gdshader`），绕着它缓慢盘旋，挡在前面的云会遮住本体。每隔 5～14 秒一道闪电，劈向迷宫或在云间横窜，照亮云层和整个场景，一两秒后传来雷声。约三成闪电劈在玩家附近的墙头上，落点留下一团由蓝白转暗橙、一秒半熄掉的余光，溅出一把火星。
 - **氛围**：冷色低角度平行光；远景指数雾让利维坦半隐半现；近景体积雾让光束和提灯显形；SSAO、辉光、降饱和。空中一直有灰烬跟着风斜斜地往下落，是炭灰和烧过的纸灰碎片，大片的慢慢翻转；它们不吃月光，暗处看不见，提灯照过去、闪电一亮才显形，背着亮天是一片片黑色的剪影；屋里和窄巷更密，露天下雨时被雨打下来（`ash.gdshader`）；身边的墙头偶尔掉下几块碎石，落地扬起一小团尘，带一声轻响（`dust.gd`）。
 - **声音**：背景音乐 `assets/audio/liweitan.mp3`（36 秒循环，走单独的 Music 总线，音量在 Esc 菜单里调）。雷声和被黑光扫中时的低频压迫声是程序合成的（`drone.gd`），走带大空间混响的 Ambience 总线；被黑光扫中时音乐也会被压下去。
-- **雨与声景**：天气一段一段随机来：每段 2～6 分钟，约三成停雨（只剩乌云和干打雷），下雨的那段大小也随机，两段之间 10～20 秒慢慢变过去。下雨时有跟着镜头的雨丝，铺底的沙沙雨声，身边一声声打在石头和铁栏杆上的雨点；进屋后看不见雨，雨声变闷变小（`rain.gd`）。下雨后地面慢慢变湿变暗，低洼处积起水洼，泛着天光，雨点打出一圈圈涟漪，闪电时一亮；停雨后要两三分钟才干（`wall.gdshader`）。利维坦的低鸣是 3D 定位的，转头听得出它在哪个方向。雨、低鸣和屋里的声音走 World 总线，它的混响按周围多开阔实时调整：窄走道回声短而亮，开阔的高处回声晚而淡，门洞和屋里小而闷（`soundscape.gd`）。全部程序合成，音量在 Esc 菜单「环境音量」里调。
+- **雨与声景**：天气一段一段随机来：每段 2～6 分钟，约三成停雨（只剩乌云和干打雷），下雨的那段大小也随机，两段之间 10～20 秒慢慢变过去。下雨时有跟着镜头的雨丝，铺底的沙沙雨声，身边一声声打在石头和铁栏杆上的雨点；进屋后看不见雨，雨声变闷变小（`rain.gd`）。下雨后地面慢慢变湿变暗，低洼处积起水洼，泛着天光，雨点打出一圈圈涟漪，闪电时一亮；停雨后要两三分钟才干（`wall.gdshader`）。利维坦的低鸣是 3D 定位的，转头听得出它在哪个方向。雨、低鸣和屋里的声音走 World 总线，它的混响按周围多开阔实时调整：窄走道回声短而亮，开阔的高处回声晚而淡，门洞和屋里小而闷（`soundscape.gd`）；站在门洞、拱廊下面雨声收一半。全部程序合成，音量在 Esc 菜单「环境音量」里调。
 
 ## 目录结构
 
@@ -128,7 +129,7 @@ leviathan/
 ├── export_presets.cfg   三个平台的导出配置
 ├── main.tscn            主场景（只有一个根节点，内容全部由脚本生成）
 ├── assets/audio/        背景音乐
-├── assets/models/       建筑装饰件 trim_kit.glb、地标 landmarks.glb、房间道具 room_props.glb（由 tools/blender/ 下的脚本生成）
+├── assets/models/       建筑装饰件 trim_kit.glb、地标 landmarks.glb、房间道具 room_props.glb、小楼 houses.glb（由 tools/blender/ 下的脚本生成）
 ├── tools/blender/       Blender 建模脚本（Godot 忽略这个目录）
 ├── docs/screenshots/    README 用的截图（.gdignore，不进游戏包）
 ├── scripts/
@@ -199,6 +200,7 @@ leviathan/
 | 利维坦的铜色、刻纹、磨损 | `leviathan.gdshader` 顶部的 `uniform` 和 `fragment()` 里的纹样 |
 | 闪电频率 / 粗细 | `storm.gd` → `STRIKE_MIN` / `STRIKE_MAX` / `BOLT_WIDTH` |
 | 闪电劈在身边的概率、余光的时长和亮度 | `storm.gd` → `NEAR_*` / `GLOW_*` |
+| 小楼每层几栋、离别的地标多远 | `maze_gen.gd` → `HOUSES_PER_TIER` / `HOUSE_GAP` |
 | 云量、云层高度、云团大小、步进次数 | `sky.gdshader` → `coverage` / `cloud_bottom` / `cloud_top` / `scale` / `steps` |
 | 云的明暗、亮边方向 | `sky.gdshader` → `ambient_color` / `shadow_color` / `light_color` / `light_dir` |
 | 利维坦的主光 | `leviathan.gd` → `_ready()` 里的 `key` |
