@@ -7,6 +7,7 @@ extends Node3D
 ## 模型来自 tools/blender/creatures.py（creatures.glb）：身体和衣服绑在一副骨骼上，走路的动作在这里按骨骼摆。
 
 const Creatures = preload("res://assets/models/creatures.glb")
+const CreatureMaterials = preload("res://scripts/creature_materials.gd")
 
 const FIRST_MIN := 70.0          # 开局后多久第一次可能出现（秒）
 const FIRST_MAX := 110.0
@@ -65,16 +66,11 @@ func _ready() -> void:
 		bones[name] = i
 		rest[name] = skel.get_bone_rest(i).basis.get_rotation_quaternion()
 		axis[name] = (skel.get_bone_global_rest(i).basis.inverse() * Vector3.RIGHT).normalized()
-	var by_slot := _materials()
-	for mi: MeshInstance3D in find_children("*", "MeshInstance3D", true, false):
-		for i in mi.mesh.get_surface_count():
-			var src := mi.mesh.surface_get_material(i)
-			mi.set_surface_override_material(i, by_slot.get(src.resource_name if src else "skin", by_slot["skin"]))
+	CreatureMaterials.apply(self, _materials(), "skin")
 	visible = false
 
 
-## 材质：颜色上叠一层噪声（斑驳、污渍、褪色），法线上叠一层（起皱、粗糙的布纹），三平面映射，不用展 UV。
-## 都用抖动透明，淡入淡出不用排序；布料双面画（衣服是单层的）
+## 材质（creature_materials.gd）；锅炉罩的观察窗另加一点自发光
 func _materials() -> Dictionary:
 	var spec := {
 		# 槽: [底色, 斑块颜色（乘在底色上）, 纹理密度, 凹凸, 粗糙度, 金属度, 双面]
@@ -87,59 +83,14 @@ func _materials() -> Dictionary:
 		"iron": [Color(0.2, 0.11, 0.06), Color(0.5, 0.42, 0.4), 1.2, 0.6, 0.75, 0.5, false],
 		"glass": [Color(0.03, 0.035, 0.025), Color(1, 1, 1), 1.0, 0.0, 0.15, 0.0, false],
 	}
-	var out := {}
-	for k: String in spec:
-		var a: Array = spec[k]
-		var m := StandardMaterial3D.new()
-		m.albedo_color = a[0]
-		m.roughness = a[4]
-		m.metallic = a[5]
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH
-		if a[6]:
-			m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		if k == "glass":
-			# 锅炉罩的观察窗：玻璃后面透出一点发黄发绿的暗光，雾里远远看得见
-			m.emission_enabled = true
-			m.emission = Color(0.55, 0.6, 0.25)
-			m.emission_energy_multiplier = 0.8
-		else:
-			var noise := FastNoiseLite.new()
-			noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-			noise.frequency = 0.02
-			noise.fractal_octaves = 4
-			noise.seed = rng.randi()
-			var g := Gradient.new()
-			g.set_color(0, a[1])
-			g.set_color(1, Color(1, 1, 1))
-			var tex := NoiseTexture2D.new()
-			tex.width = 256
-			tex.height = 256
-			tex.seamless = true
-			tex.noise = noise
-			tex.color_ramp = g
-			m.albedo_texture = tex
-			var bump := NoiseTexture2D.new()
-			bump.width = 256
-			bump.height = 256
-			bump.seamless = true
-			bump.as_normal_map = true
-			bump.bump_strength = 6.0
-			var bn := FastNoiseLite.new()
-			bn.noise_type = FastNoiseLite.TYPE_CELLULAR if k == "skin" else FastNoiseLite.TYPE_SIMPLEX
-			bn.frequency = 0.06
-			bump.noise = bn
-			m.normal_enabled = true
-			m.normal_texture = bump
-			m.normal_scale = a[3]
-			m.uv1_triplanar = true
-			m.uv1_scale = Vector3.ONE * a[2] * 0.25
-		if k == "skin":
-			# 发湿的皮：边上一圈微亮，雾里也读得出轮廓
-			m.rim_enabled = true
-			m.rim = 0.35
-			m.rim_tint = 0.4
+	var out := CreatureMaterials.make(spec, rng, ["glass"])
+	# 观察窗：玻璃后面透出一点发黄发绿的暗光，雾里远远看得见
+	var glass: StandardMaterial3D = out["glass"]
+	glass.emission_enabled = true
+	glass.emission = Color(0.55, 0.6, 0.25)
+	glass.emission_energy_multiplier = 0.8
+	for m: BaseMaterial3D in out.values():
 		mats.append(m)
-		out[k] = m
 	return out
 
 
