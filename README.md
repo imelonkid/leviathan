@@ -143,6 +143,7 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 | v0.10 | Architectural trim modeled in Blender: coping, plinths, corner pilasters, voussoir arches | ✅ |
 | v0.11 | Landmarks: bell towers, watchtowers, spires and gatehouses rising above the walls; flying bridges over the lower streets, one with a hanging stair, two broken off in mid-air; a bridge across each plaza at walkway height with a floating stair up to it | ✅ |
 | v0.12 | Atmosphere: puddles that come and go with the rain; the black light swallows the sound around you; falling ash you only see in the light, grit trickling off the walls, and lightning that leaves an afterglow | ✅ |
+| v0.13 | Every one of the 37 room props rebuilt in Blender: bent-pipe iron beds, a crib with a broken slat, a gurney whose sheet shows the shape underneath, a clawfoot tub, a long table under a tablecloth and candelabra, a grandfather clock with a swinging pendulum, a caged altar room, and less than half the draw calls near rooms | ✅ |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).
 
