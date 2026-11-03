@@ -13,6 +13,7 @@ const BeamFx = preload("res://scripts/beam_fx.gd")
 const EnergyBar = preload("res://scripts/energy_bar.gd")
 const Soundscape = preload("res://scripts/soundscape.gd")
 const Rain = preload("res://scripts/rain.gd")
+const Dust = preload("res://scripts/dust.gd")
 const MUSIC = preload("res://assets/audio/liweitan.mp3")   # 背景音乐，导入设置里已开循环
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
@@ -73,11 +74,20 @@ func _ready() -> void:
 	rain.soundscape = soundscape
 	add_child(rain)
 
+	var dust := Dust.new()
+	dust.name = "Dust"
+	dust.settings = settings
+	dust.maze = maze
+	dust.soundscape = soundscape
+	dust.rain = rain
+	add_child(dust)
+
 	var storm := Storm.new()
 	storm.name = "Storm"
 	storm.env = env
 	storm.drone = drone
 	storm.settings = settings
+	storm.maze = maze
 	storm.center = lev.position
 	add_child(storm)
 
