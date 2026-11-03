@@ -49,6 +49,7 @@ const FLY_BROKEN_BANDS: Array[int] = [2, 10]   # 这几圈各伸出一座断在�
 const FLY_LEVEL := 2                   # 通的飞桥：平桥几块，后面三块是悬空楼梯，再一块是落脚的格子
 const FLY_BROKEN_MIN := 3              # 断桥伸出去几块
 const FLY_BROKEN_MAX := 5
+const PLAZA_STAIR_BLOCKS := 2         # 广场高架桥的悬空楼梯：两块，每块升 STAIR_RISE，正好爬到步道高度
 const FLY_CLEAR := 4.0                 # 飞桥下面的墙压到桥面以下这么多（桥面厚 0.8，留出 3 米多的空当，从旁边看得出桥是悬着的）
 const COURT_H := STAIR_RISE * 2.0      # 庭院围墙高出地面多少（两块楼梯的升高，8 米）；挑台和墙顶步道也在这个高度
 const ROOM_H := 6.0                    # 大房间屋顶离地高度
@@ -71,6 +72,7 @@ var towers: Array[Dictionary] = [] # 塔楼：{block: 墙角块, kind: TOWER_*, 
 var gatehouses: Array[Dictionary] = [] # 门楼：{block: 跨过的通道块, along_x: 街是否沿 x, base}
 var landmark: Array = []          # landmark[z][x]：被地标占了的块（塔楼、门楼的两个墩子和楼下的通道），墙面不再加窗和装饰件
 var overpasses: Array[Dictionary] = [] # 飞桥：{root: 观景台上的起点块, out: 朝外的方向, level: 平桥几块, stair: 悬空楼梯几块（0 = 断桥）, deck: 桥面高度, base: 下层地面高度}
+var plaza_bridges: Array[Dictionary] = [] # 广场高架桥：{start: 桥头那块围墙, dir: 过桥的方向, span: 跨过几块, deck: 桥面高度, base: 广场地面, stair_at: 楼梯接在桥上哪一块, stair_dir: 楼梯从桥边往下走的方向}
 var overpass: Array = []          # overpass[z][x]：头顶有飞桥或悬空楼梯，记下层地面高度；没有是 NAN
 var jumps := {}                   # 飞桥连起来的两块：块 → [另一头的块]，path_length 用
 var span: Array = []              # span[z][x]：步道从这条通道上方跨过去——下面仍是通道（两头各一道拱），上面是步道的桥面
@@ -97,6 +99,7 @@ func generate(seed_value: int) -> void:
 	landmark = _grid(false)
 	overpass = _grid(NAN)
 	overpasses.clear()
+	plaza_bridges.clear()
 	jumps.clear()
 	towers.clear()
 	gatehouses.clear()
@@ -123,6 +126,7 @@ func generate(seed_value: int) -> void:
 	_pick_spawn()
 	_make_walkways()
 	_make_overpasses()
+	_make_plaza_bridges()
 	_make_landmarks()
 
 
@@ -811,6 +815,55 @@ func _make_overpasses() -> void:
 				jumps[foot] = [root]
 			overpasses.append({"root": root, "out": out, "level": level, "stair": stair, "deck": deck, "base": base})
 			break
+
+
+## 广场高架桥：大广场（5×5 块）上空，在墙顶步道的高度从一边围墙横架到对边，桥下照样是广场；
+## 桥的中段一侧接一段悬空楼梯落到广场地面。优先走正中一排，避开院里的楼梯和挑台
+func _make_plaza_bridges() -> void:
+	for r in courtyards:
+		if r.size.x < 5:
+			continue
+		var base := tier_floor(r.position.x, r.position.y)
+		var deck := base + COURT_H
+		var options: Array = []
+		for dir: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+			var perp := Vector2i(dir.y, dir.x)
+			for row in [2, 1, 3]:
+				var start: Vector2i = r.position + perp * row - dir
+				for sd: Vector2i in [perp, -perp]:
+					if _plaza_bridge_ok(r, start, dir, sd, base):
+						options.append([(1.0 if row != 2 else 0.0) + rng.randf() * 0.5, start, dir, sd])
+		if options.is_empty():
+			continue
+		options.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
+		var o: Array = options[0]
+		var start: Vector2i = o[1]
+		var dir: Vector2i = o[2]
+		var sd: Vector2i = o[3]
+		var at := start + dir * 3
+		for k in range(1, 6):
+			var p := start + dir * k
+			overpass[p.y][p.x] = base
+		for k in range(1, PLAZA_STAIR_BLOCKS + 1):
+			var p := at + sd * k
+			overpass[p.y][p.x] = base
+		plaza_bridges.append({"start": start, "dir": dir, "span": 5, "deck": deck, "base": base, "stair_at": at, "stair_dir": sd})
+
+
+## 桥下五块都是广场地面（不是楼梯、挑台），两头的围墙顶是步道；楼梯那一溜也都是广场地面
+func _plaza_bridge_ok(r: Rect2i, start: Vector2i, dir: Vector2i, sd: Vector2i, base: float) -> bool:
+	for p: Vector2i in [start, start + dir * 6]:
+		if not walkway[p.y][p.x]:
+			return false
+	var blocks: Array[Vector2i] = []
+	for k in range(1, 6):
+		blocks.append(start + dir * k)
+	for k in range(1, PLAZA_STAIR_BLOCKS + 1):
+		blocks.append(start + dir * 3 + sd * k)
+	for p in blocks:
+		if not r.has_point(p) or kind[p.y][p.x] != FLOOR or not is_equal_approx(height[p.y][p.x], base):
+			return false
+	return true
 
 
 ## 第 b 圈观景台上能伸出飞桥的块：每条边的直段上、对着下层一排格子的那些（偏移是偶数块）
