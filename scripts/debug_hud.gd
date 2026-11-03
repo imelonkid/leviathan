@@ -98,6 +98,11 @@ class Minimap extends Control:
 		for g: Dictionary in gen.gatehouses:
 			var b: Vector2i = g["block"]
 			draw_rect(Rect2(Vector2(b) * cell - Vector2(cell, cell) * 0.5, Vector2(cell, cell) * 2.0), Color(0.85, 0.8, 0.95))
+		# 小楼：沿墙一条三块长的白条
+		for hs: Dictionary in gen.houses:
+			var b := Vector2(hs["block"]) + Vector2(0.5, 0.5)
+			var al := Vector2(hs["along"])
+			draw_line((b - al * 1.5) * cell, (b + al * 1.5) * cell, Color(0.95, 0.92, 0.85), cell * 1.4)
 		# 房间：暗红色的方块
 		for room: Dictionary in gen.rooms:
 			var r: Rect2i = room["rect"]

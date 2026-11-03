@@ -37,6 +37,7 @@ var hum: AudioStreamPlayer3D
 var probe_t := 0.0
 var indoor := false              # 镜头在某间房里（rain.gd 也读它）
 var openness := 0.5              # 周围有多开阔 0（屋里、头顶有遮挡、窄巷）～ 1（观景台），dust.gd 读它
+var covered := false             # 头顶有遮挡（门洞、隧道、小楼的拱廊），rain.gd 读它：雨声收一半
 var target := {"room": 0.6, "damp": 0.4, "wet": 0.25, "pre": 20.0}
 
 
@@ -129,6 +130,7 @@ func _probe() -> void:
 		for r: Node in maze.room_nodes.values():
 			if r.get("inside"):
 				indoor = true
+	covered = false
 	if indoor:
 		openness = 0.0
 		target = {"room": 0.3, "damp": 0.7, "wet": 0.3, "pre": 4.0}
@@ -143,6 +145,7 @@ func _probe() -> void:
 	var up := _ray(space, origin, Vector3.UP, 12.0, ex)
 	if up < 10.0:
 		openness = 0.0
+		covered = true
 		target = {"room": 0.4, "damp": 0.5, "wet": 0.35, "pre": 8.0}
 		return
 	var o := clampf((total / 8.0 - 3.0) / 30.0, 0.0, 1.0)

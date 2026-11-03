@@ -32,7 +32,8 @@
 
 ## 接下来
 
-- 待定：带拱廊的小楼、PBR 材质
+- 试玩调参：走到顶层要多久、哪里太绕太直、滑翔抄近路（等试玩反馈）
+- 待定：声音（少量可再分发的采样）、PBR 材质
 
 ## 性能基线（2026-11，M5 Max，1600×900 窗口）
 
@@ -81,7 +82,7 @@
 - [x] 房间道具全部（37 件）改用 Blender 模型（`tools/blender/room_props.py` → `assets/models/room_props.glb`）
 - [ ] 在 Blender 里按 5 米网格建模块：直墙、转角、T 字、拱门、柱廊、壁龛、楼梯段、桥段
 - [x] 迷宫里的地标：钟楼、望楼、尖塔立在墙角，门楼横跨长直街（`tools/blender/landmarks.py` → `assets/models/landmarks.glb`）
-- [ ] 带拱廊的小楼等更多建筑
+- [x] 带拱廊的小楼（`tools/blender/houses.py` → `assets/models/houses.glb`）：第 1、2 层各两栋，拱廊能避雨、穿不过去
 - [ ] 生成器改为输出格子类型，再用 MeshLibrary / GridMap 拼装
 - [ ] 先用 4～6 个模块跑通流程，再逐步扩充
 

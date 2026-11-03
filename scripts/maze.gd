@@ -9,6 +9,7 @@ const WallShader = preload("res://scripts/wall.gdshader")
 const InteriorShader = preload("res://scripts/interior.gdshader")
 const TrimKit = preload("res://assets/models/trim_kit.glb")   # 建筑装饰件，tools/blender/trim_kit.py 生成
 const Landmarks = preload("res://assets/models/landmarks.glb")   # 塔楼和门楼，tools/blender/landmarks.py 生成
+const Houses = preload("res://assets/models/houses.glb")         # 带拱廊的小楼，tools/blender/houses.py 生成
 const Room = preload("res://scripts/rooms/room.gd")
 const ROOM_NEAR := 30.0          # 走到离房间中心这么近才把屋里搭出来
 const ROOM_FAR := 60.0           # 走远到这么远再拆掉
@@ -62,7 +63,7 @@ var trim_mat: ShaderMaterial
 var trim_meshes := {}            # 装饰件名 → 网格（来自 trim_kit.glb）
 var trims := {}                  # 装饰件名 → 这一件的所有摆放位置
 var landmark_meshes := {}        # 地标名 → 网格（来自 landmarks.glb）
-var landmark_mats := {}          # 材质槽名（stone / roof / dark）→ 游戏里的材质
+var landmark_mats := {}          # 材质槽名（stone / roof / dark，小楼还有 wood / frame / cloth）→ 游戏里的材质
 var window_faces := {}           # 开了拱窗的墙面：Vector4i(x, z, dx, dz)，壁柱避开它们
 var gate_mesh: ArrayMesh
 var window_mesh: ArrayMesh
@@ -129,6 +130,7 @@ func build() -> void:
 	_build_windows()
 	_build_trim()
 	_build_landmarks()
+	_build_houses()
 	_build_plaza_monoliths()
 	_build_rooms()
 	_build_outer_field()
@@ -173,10 +175,11 @@ func _make_materials() -> void:
 	trim_mat.set_shader_parameter("plaster_color", Color(0.56, 0.52, 0.46))
 	trim_mat.set_shader_parameter("peel", 0.08)
 	trim_mat.set_shader_parameter("crack", 0.35)
-	var lm: Node = Landmarks.instantiate()
-	for c in lm.find_children("*", "MeshInstance3D", true, false):
-		landmark_meshes[String(c.name)] = (c as MeshInstance3D).mesh
-	lm.free()
+	for scene: PackedScene in [Landmarks, Houses]:
+		var lm: Node = scene.instantiate()
+		for c in lm.find_children("*", "MeshInstance3D", true, false):
+			landmark_meshes[String(c.name)] = (c as MeshInstance3D).mesh
+		lm.free()
 	var roof := StandardMaterial3D.new()
 	roof.albedo_color = Color(0.11, 0.11, 0.12)
 	roof.roughness = 0.55
@@ -184,7 +187,17 @@ func _make_materials() -> void:
 	var hole := StandardMaterial3D.new()
 	hole.albedo_color = Color(0.012, 0.012, 0.014)
 	hole.roughness = 1.0
-	landmark_mats = {"stone": wall_mat, "roof": roof, "dark": hole}
+	var boards := StandardMaterial3D.new()
+	boards.albedo_color = Color(0.17, 0.11, 0.07)
+	boards.roughness = 0.9
+	var iron := StandardMaterial3D.new()
+	iron.albedo_color = Color(0.16, 0.15, 0.14)
+	iron.roughness = 0.6
+	iron.metallic = 0.6
+	var rag := StandardMaterial3D.new()
+	rag.albedo_color = Color(0.42, 0.39, 0.33)
+	rag.roughness = 1.0
+	landmark_mats = {"stone": wall_mat, "roof": roof, "dark": hole, "wood": boards, "frame": iron, "cloth": rag}
 	var kit: Node = TrimKit.instantiate()
 	for c in kit.find_children("*", "MeshInstance3D", true, false):
 		var mesh: Mesh = (c as MeshInstance3D).mesh
@@ -248,17 +261,18 @@ func _is_solid(x: int, z: int) -> bool:
 	return k == MazeGen.WALL or k == MazeGen.PARAPET
 
 
-## 按行合并：同样高度的连续墙（含矮墙）合成一段；拱廊墙另外搭
+## 按行合并：同样高度的连续墙（含矮墙）合成一段；拱廊墙另外搭，小楼占的墙由楼身代替
 func _build_walls() -> void:
 	for z in n:
 		var x := 0
 		while x < n:
-			if not _is_solid(x, z) or gen.arcade[z][x]:
+			if not _is_solid(x, z) or gen.arcade[z][x] or gen.house[z][x]:
 				x += 1
 				continue
 			var start := x
 			var top: float = gen.wall_top[z][x]
-			while x < n and _is_solid(x, z) and not gen.arcade[z][x] and is_equal_approx(gen.wall_top[z][x], top):
+			while x < n and _is_solid(x, z) and not gen.arcade[z][x] and not gen.house[z][x] \
+					and is_equal_approx(gen.wall_top[z][x], top):
 				x += 1
 			_add_column(wall_boxes, start, x - 1, z, top)
 
@@ -580,6 +594,91 @@ func _build_landmarks() -> void:
 		for s: float in [-1.0, 1.0]:
 			_add_collider(pos + across * s * block + Vector3(0, 8.8, 0), Vector3(block, 17.6, block))
 		_add_collider(pos + Vector3(0, 11.55, 0), (turn * Vector3(block, 8.1, block)).abs())
+
+
+## 小楼（houses.glb）的尺寸，和 tools/blender/houses.py 一致：楼长 15、进深 5，底层（拱廊层）4.6 米、楼上每层 4.2 米
+const HOUSE_LEN := 15.0
+const HOUSE_GROUND := 4.6
+const HOUSE_STOREY := 4.2
+const HOUSE_PORCH := 2.0
+const HOUSE_ROOF := 2.6          # 檐口线脚 0.6 + 屋脊升高 2.0
+
+
+## 拱洞的位置（局部 x）：和 houses.py 的 arcade_layout 同一套算法
+func _house_arches(arches: int) -> Array[Vector2]:
+	var span := HOUSE_LEN / arches
+	var pier := 1.0 if arches == 3 else 0.8
+	var out: Array[Vector2] = []
+	for i in arches:
+		var cx := -HOUSE_LEN / 2.0 + span * (i + 0.5)
+		out.append(Vector2(cx - (span - pier) / 2.0, cx + (span - pier) / 2.0))
+	return out
+
+
+## 带拱廊的小楼：楼身、楼上的拱窗（窗洞里是假室内）、阳台，以及碰撞——
+## 廊子后面的实心部分、拱之间的墩子、拱上的墙、楼上整块，屋顶两面坡和屋脊（站得住）
+func _build_houses() -> void:
+	if landmark_meshes.is_empty():
+		return
+	for h: Dictionary in gen.houses:
+		var c: Vector2i = h["block"]
+		var face: Vector2i = h["face"]
+		var along: Vector2i = h["along"]
+		var storeys: int = h["storeys"]
+		var base: float = h["base"]
+		var f := Vector3(face.x, 0, face.y)
+		var rot := Basis(Vector3.UP.cross(f), Vector3.UP, f)
+		var origin := _block_to_world(c.x, c.y) + Vector3(0, base, 0)
+		var xf := Transform3D(rot, origin)
+		_place_landmark("house_s%d_a%d" % [storeys, h["arches"]], xf)
+		var top := HOUSE_GROUND + HOUSE_STOREY * (storeys - 1)
+		var hl := HOUSE_LEN / 2.0
+		var d := block / 2.0
+		# 窗：朝街那面楼上每层三扇；背面只在对着平地的那几段开，底层也开
+		var back := Basis(Vector3.UP.cross(-f), Vector3.UP, -f)
+		for k in storeys:
+			var y := 1.0 + (0.0 if k == 0 else HOUSE_GROUND + HOUSE_STOREY * (k - 1))
+			for i in 3:
+				var x := (i - 1) * block
+				if k > 0:
+					windows.append(Transform3D(rot, xf * Vector3(x, y, d)))
+				var bk: Vector2i = c - face + along * (i - 1)
+				if gen.kind[bk.y][bk.x] == MazeGen.FLOOR and is_equal_approx(gen.height[bk.y][bk.x], base):
+					windows.append(Transform3D(back, xf * Vector3(x, y, -d)))
+		if h["balcony"]:
+			_place_landmark("house_balcony", Transform3D(rot, xf * Vector3(0, HOUSE_GROUND + 0.08, d)))
+		# 碰撞（局部坐标里算，再变到世界）
+		var zp := d - HOUSE_PORCH
+		var boxes: Array[AABB] = [
+			AABB(Vector3(-hl, 0, -d), Vector3(HOUSE_LEN, HOUSE_GROUND, zp + d)),                  # 廊子后面
+			AABB(Vector3(-hl, HOUSE_GROUND - 0.5, zp), Vector3(HOUSE_LEN, 0.5, HOUSE_PORCH)),       # 廊顶
+			AABB(Vector3(-hl, HOUSE_GROUND, -d), Vector3(HOUSE_LEN, top - HOUSE_GROUND + 0.6, block)),   # 楼上整块，到檐口
+		]
+		var spring := 2.4 if h["arches"] == 3 else 2.2
+		var edges: Array[float] = [-hl]
+		for a in _house_arches(h["arches"]):
+			edges.append(a.x)
+			edges.append(a.y)
+			var r := (a.y - a.x) / 2.0
+			boxes.append(AABB(Vector3(a.x, spring + r * 0.7, d - 0.5), Vector3(a.y - a.x, HOUSE_GROUND - spring - r * 0.7, 0.5)))
+		edges.append(hl)
+		for i in range(0, edges.size(), 2):
+			if edges[i + 1] - edges[i] > 0.01:
+				boxes.append(AABB(Vector3(edges[i], 0, d - 0.5), Vector3(edges[i + 1] - edges[i], spring, 0.5)))
+		for sx: float in [-1.0, 1.0]:                                                          # 廊子两头的端墙
+			boxes.append(AABB(Vector3(-hl if sx < 0.0 else hl - 0.6, 0, zp), Vector3(0.6, HOUSE_GROUND, HOUSE_PORCH)))
+		for b in boxes:
+			_add_collider(xf * b.get_center(), b.size, rot)
+		# 屋顶：两面坡 + 屋脊一条平的，站得住
+		var eave := top + 0.6
+		var half_d := d + 0.4
+		var slope := Vector2(half_d, HOUSE_ROOF - 0.6)
+		var tilt := atan2(slope.y, slope.x)
+		for s: float in [-1.0, 1.0]:
+			var mid := Vector3(0, eave + slope.y / 2.0 + 0.06, s * half_d / 2.0)
+			var roof_rot := rot * Basis(Vector3.RIGHT, s * tilt)
+			_add_collider(xf * mid, Vector3(HOUSE_LEN + 0.8, 0.12, slope.length()), roof_rot)
+		_add_collider(xf * Vector3(0, top + HOUSE_ROOF + 0.12, 0), Vector3(HOUSE_LEN + 0.8, 0.2, 0.6), rot)
 
 
 func _place_landmark(name: String, xf: Transform3D) -> void:
