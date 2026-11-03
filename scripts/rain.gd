@@ -16,6 +16,8 @@ const SPELL_MAX := 360.0
 const DRY_CHANCE := 0.35         # 一段天气是停雨的概率
 const FADE_MIN := 10.0           # 天气变化用多久渐变过去（秒）
 const FADE_MAX := 20.0
+const WET_TIME := 50.0           # 雨下起来后地面多久湿透、积满水洼（秒）
+const DRY_TIME := 150.0          # 停雨后多久干透
 
 var settings: Node               # main 注入
 var soundscape: Node
@@ -33,6 +35,7 @@ var level := 0.0                 # 雨的大小 0～1（当前，渐变中）
 var goal := 0.0                  # 这段天气的雨量；0 = 停雨
 var spell_left := 0.0            # 这段天气还剩多久
 var fade_rate := 0.1             # 每秒往 goal 走多少
+var wet := 0.0                    # 地面有多湿 0～1：跟着雨量走，涨得快、退得慢（着色器全局参数 wetness）
 var inside := 0.0                # 0 屋外 ～ 1 屋里，平滑过
 var t := 0.0
 
@@ -41,6 +44,7 @@ func _ready() -> void:
 	rng.randomize()
 	_next_spell()
 	level = goal                 # 开局直接就是这段天气，不从零渐变
+	wet = goal
 	rain_bus = AudioServer.get_bus_index("Rain")
 	if rain_bus < 0:
 		AudioServer.add_bus()
@@ -128,6 +132,9 @@ func _process(delta: float) -> void:
 	# 下雨的那段里还有一点忽大忽小
 	var wobble := 0.08 * sin(t * 0.09) if goal > 0.0 else 0.0
 	level = move_toward(level, clampf(goal + wobble, 0.0, 1.0), fade_rate * delta)
+	wet = move_toward(wet, level, delta / (WET_TIME if level > wet else DRY_TIME))
+	RenderingServer.global_shader_parameter_set("wetness", wet)
+	RenderingServer.global_shader_parameter_set("rain", level)
 	var target := 1.0 if soundscape and soundscape.indoor else 0.0
 	inside = move_toward(inside, target, delta * 1.5)
 

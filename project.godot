@@ -28,3 +28,11 @@ lightning={
 "type": "float",
 "value": 0.0
 }
+wetness={
+"type": "float",
+"value": 0.0
+}
+rain={
+"type": "float",
+"value": 0.0
+}

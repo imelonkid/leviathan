@@ -2,6 +2,7 @@
 // 墙面是一层风化的灰泥 / 夯土：大块的明暗斑驳、细裂纹、竖向水渍、墙根积的土；
 // 灰泥剥落的地方露出底下的土坯砖。朝上的面是踩实的土地，带碎石和浅坑。
 // 用屏幕空间导数做凹凸，裂纹和剥落处真的有起伏。
+// 下雨时朝上的面变湿变暗；地面（puddles = 1）的低洼处积起水洼：几乎是镜面，下雨时有涟漪，闪电时一亮。
 shader_type spatial;
 render_mode blend_mix, cull_back, diffuse_burley, specular_schlick_ggx;
 
@@ -14,6 +15,11 @@ uniform float peel = 0.45;                   // 灰泥剥落的多少，0 = 不�
 uniform float crack = 0.6;                   // 裂纹强度
 uniform float grime = 0.55;                  // 水渍和积土强度
 uniform float bump = 1.4;                    // 凹凸强度
+uniform float puddles = 0.0;                 // 会不会积水洼：地面 1，墙顶等 0
+uniform vec3 puddle_sky : source_color = vec3(0.2, 0.24, 0.31);   // 水洼里倒映的天光（越斜着看越亮）
+global uniform float wetness;                // 地面有多湿 0～1（rain.gd：下雨时慢慢变湿，停雨后更慢地变干）
+global uniform float rain;                   // 当前雨量 0～1：水洼上的涟漪
+global uniform float lightning;              // 闪电亮度（storm.gd）
 
 varying vec3 world_pos;
 varying vec3 world_nrm;
@@ -72,6 +78,22 @@ float cell_edge(vec2 p) {
 	return sqrt(d2) - sqrt(d1);
 }
 
+// 水洼上的雨点涟漪：每 0.7 米一格，格里一个雨点，按各自的相位一圈圈扩散
+float ripples(vec2 p) {
+	vec2 g = p / 0.7;
+	float h = 0.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 c = floor(g) + vec2(float(x), float(y));
+			vec2 r = hash2(c);
+			float t = fract(TIME * 0.8 + r.x * 7.0);
+			float d = length(g - c - r) - t * 0.9;
+			h += sin(d * 40.0) * exp(-abs(d) * 18.0) * (1.0 - t);
+		}
+	}
+	return h;
+}
+
 void fragment() {
 	vec3 n = abs(world_nrm);
 	bool up = n.y > max(n.x, n.z);
@@ -86,6 +108,9 @@ void fragment() {
 
 	float h;            // 凹凸用的高度
 	vec3 col;
+	float rough = 0.97;
+	float spec = 0.2;
+	vec3 emit = vec3(0.0);
 	if (up) {
 		// 踩实的土地：大块深浅、零星碎石、积土的浅坑
 		float mottle = fbm(uv * 0.25) * 0.6 + fbm(uv * 1.7) * 0.4;
@@ -95,6 +120,24 @@ void fragment() {
 		col = mix(col, dirt_color, pit * 0.5);
 		col *= 1.0 - gravel * 0.3;
 		h = mottle * 0.4 - pit * 0.6 + gravel * 0.4 + fbm(uv * 6.0) * 0.12;
+
+		// 湿了：整体变暗、没那么糙；低洼处积水
+		col *= 1.0 - wetness * 0.35;
+		rough = mix(0.97, 0.6, wetness);
+		float low = fbm(uv * 0.15 + 17.0) * 0.75 + fbm(uv * 0.6 + 7.3) * 0.25;
+		float t = mix(0.8, 0.56, wetness);
+		float water = smoothstep(t, t + 0.025, low) * step(0.02, wetness) * puddles;
+		float rim = smoothstep(t - 0.07, t, low) * wetness * puddles;   // 水边一圈湿泥
+		col *= 1.0 - rim * 0.25;
+		col = mix(col, col * 0.2, water);
+		rough = mix(rough, 0.03, water);
+		spec = mix(spec, 0.5, water);
+		h = mix(h, ripples(uv) * 0.25 * rain, water);
+		// 倒映的天：天空是自定义着色器，引擎的环境反射几乎为零，这里按菲涅耳自己加一层天光；
+		// 开了屏幕空间反射时，墙和利维坦的倒影叠在上面
+		vec3 up_v = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+		float fres = pow(1.0 - clamp(dot(up_v, VIEW), 0.0, 1.0), 3.0);
+		emit = (puddle_sky * (0.25 + fres * 0.9) + vec3(0.5, 0.55, 0.7) * lightning * 0.5) * water;
 	} else {
 		// 灰泥层：大块斑驳 + 细颗粒
 		float mottle = fbm(uv * 0.18) * 0.55 + fbm(uv * 1.1) * 0.45;
@@ -143,6 +186,7 @@ void fragment() {
 	NORMAL = normalize(abs(det) * NORMAL - grad * bump * 0.05);
 
 	ALBEDO = col;
-	ROUGHNESS = 0.97;
-	SPECULAR = 0.2;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+	EMISSION = emit;
 }

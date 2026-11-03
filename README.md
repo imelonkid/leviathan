@@ -42,7 +42,7 @@ Inspired by the image of a "geometric god ruling a labyrinth" in *Hellbound: Hel
 </tr>
 <tr>
 <td><b>Black light.</b> Two beams fire from the Leviathan's waist and turn slowly, like searchlights that swallow light instead of casting it.</td>
-<td><b>A living storm.</b> Ray-marched volumetric clouds, a cloud ring circling the god, and lightning every few seconds, followed by thunder that arrives at the speed of sound. Rain comes and goes in spells, hisses on the stones and pings off railings, goes muffled when you step indoors, and the reverb tightens in narrow streets and opens up on the terraces.</td>
+<td><b>A living storm.</b> Ray-marched volumetric clouds, a cloud ring circling the god, and lightning every few seconds, followed by thunder that arrives at the speed of sound. Rain comes and goes in spells, hisses on the stones and pings off railings, goes muffled when you step indoors, slowly darkens the ground and fills its hollows with puddles that ripple and catch the lightning, and the reverb tightens in narrow streets and opens up on the terraces.</td>
 </tr>
 </table>
 
@@ -102,7 +102,7 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 
 ## ⚙️ Graphics settings
 
-The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, the Leviathan's hum, sounds in the rooms), and a photo mode that unlocks free flight through walls.
+The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), puddle reflections (screen-space, on by default only on High), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, the Leviathan's hum, sounds in the rooms), and a photo mode that unlocks free flight through walls.
 
 ## 🛠️ Run from source
 
@@ -141,8 +141,8 @@ Tuning knobs for every system are listed in the [Chinese README](README.zh-CN.md
 | v0.8 | Rain, a Leviathan hum you can locate, reverb that follows the space around you | ✅ |
 | v0.9 | 25 m plazas and a connected wall-top walkway network that bridges over the streets | ✅ |
 | v0.10 | Architectural trim modeled in Blender: coping, plinths, corner pilasters, voussoir arches | ✅ |
-| v0.11 | Landmarks: bell towers, watchtowers, spires and gatehouses rising above the walls; flying bridges over the lower streets, one with a hanging stair, two broken off in mid-air; a bridge across each plaza at walkway height with a floating stair up to it | 🚧 |
-| next | To be decided: arcaded houses, room props modeled in Blender, PBR materials, atmosphere details | ⏳ |
+| v0.11 | Landmarks: bell towers, watchtowers, spires and gatehouses rising above the walls; flying bridges over the lower streets, one with a hanging stair, two broken off in mid-air; a bridge across each plaza at walkway height with a floating stair up to it | ✅ |
+| v0.12 | Atmosphere: puddles that come and go with the rain; the black light swallows the sound around you; dust, falling grit and lightning that leaves an afterglow | 🚧 |
 
 See [ROADMAP.md](ROADMAP.md) for the full plan (in Chinese).
 

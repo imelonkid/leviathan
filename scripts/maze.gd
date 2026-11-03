@@ -161,10 +161,12 @@ func world_to_block(p: Vector3) -> Vector2:
 
 
 func _make_materials() -> void:
-	# 墙和地面用同一个着色器：竖直面是旧灰泥 / 土坯，朝上的面是踩实的土地
+	# 墙和地面用同一个着色器：竖直面是旧灰泥 / 土坯，朝上的面是踩实的土地；地面另一份材质，下雨会积水洼
 	wall_mat = ShaderMaterial.new()
 	wall_mat.shader = WallShader
-	floor_mat = wall_mat
+	floor_mat = ShaderMaterial.new()
+	floor_mat.shader = WallShader
+	floor_mat.set_shader_parameter("puddles", 1.0)
 	# 装饰件：同一个墙面着色器，灰泥浅一点、不怎么剥落，看上去是另砌的石头线脚
 	trim_mat = ShaderMaterial.new()
 	trim_mat.shader = WallShader
