@@ -1,6 +1,8 @@
 # 房间道具，按参数生成，导出成 assets/models/room_props.glb。
 # 第一批：铁床、摇椅、婴儿床、轮椅、瓷娃娃、人台；第二批（医疗类）：手术台、推床、输液架、推车、洗手池、浴缸、铁皮柜、柜子；
-# 第三批（家具）：椅子、凳子、桌子（加一套餐具）、长餐桌、课桌、长椅、架子（三套瓶罐）、木箱、落地钟、挂钟、表盘。
+# 第三批（家具）：椅子、凳子、桌子（加一套餐具）、长餐桌、课桌、长椅、架子（三套瓶罐）、木箱、落地钟、挂钟、表盘；
+# 第三批（二）：画框（三种尺寸）、镜子和蒙布、黑板、布告板（两套纸）、衣帽架和外套、铁桶、两簇蜡烛、铁笼、棺材和棺盖、
+# 祭台的台座、两堆骨头和头骨、铁链和钩子、垂布和横杆。
 # 每个物体一件（或一件的一个活动部分），按名字取；材质槽名字对应 scripts/rooms/props.gd 里的材质：
 #   frame（铁或锈，游戏里按不安程度挑；铁皮柜是漆过的铁）、wood、cloth、porcelain、black、skin、steel、brass、glass
 #   （wood、glass、black 等槽在游戏里也可能被换掉：柜子有深浅两种木头，输液袋、浴缸和洗手池里的水不安时是血）
@@ -20,7 +22,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 SLOTS = ["frame", "wood", "cloth", "porcelain", "black", "skin", "steel", "brass", "glass", "dark_wood", "face", "wax",
-         "flame", "jar_dark"]
+         "flame", "jar_dark", "canvas", "figure", "board", "cork", "paper", "pin", "bone", "stone"]
 COLORS = {
     "frame": ((0.2, 0.19, 0.18), 0.6, 0.7),
     "wood": ((0.24, 0.16, 0.1), 0.75, 0.0),
@@ -36,6 +38,14 @@ COLORS = {
     "wax": ((0.62, 0.56, 0.45), 0.7, 0.0),
     "flame": ((1.0, 0.62, 0.28), 0.5, 0.0),
     "jar_dark": ((0.2, 0.08, 0.06), 0.1, 0.5),
+    "canvas": ((0.2, 0.17, 0.13), 0.9, 0.0),
+    "figure": ((0.35, 0.3, 0.26), 0.9, 0.0),
+    "board": ((0.05, 0.08, 0.06), 0.9, 0.0),
+    "cork": ((0.32, 0.22, 0.13), 0.95, 0.0),
+    "paper": ((0.55, 0.52, 0.42), 0.95, 0.0),
+    "pin": ((0.55, 0.42, 0.22), 0.35, 0.9),
+    "bone": ((0.55, 0.5, 0.4), 0.8, 0.0),
+    "stone": ((0.2, 0.19, 0.18), 0.95, 0.0),
 }
 
 
@@ -928,6 +938,373 @@ def clock():
     d.build()
 
 
+# ======================= 第三批（二）：墙上、吊顶、仪式和囚室 =======================
+
+def frame_ring(p, w, h, d, z0, slot, inner=0.05):
+    """画框、镜框：四根带斜角的线脚，外圈 w×h，宽 inner，厚 d，背面贴在 z0"""
+    hw, hh = w / 2, h / 2
+    iw, ih = hw - inner, hh - inner
+    for (ax, ay), (bx, by), (cx, cy), (dx, dy) in (
+            ((-hw, hh), (hw, hh), (iw, ih), (-iw, ih)), ((hw, hh), (hw, -hh), (iw, -ih), (iw, ih)),
+            ((hw, -hh), (-hw, -hh), (-iw, -ih), (iw, -ih)), ((-hw, -hh), (-hw, hh), (-iw, ih), (-iw, -ih))):
+        quad = [V(ax, ay, 0), V(bx, by, 0), V(cx, cy, 0), V(dx, dy, 0)]
+        back = [p.v(q + V(0, 0, z0)) for q in quad]
+        front = [p.v(q + V(0, 0, z0 + d * (0.7 if k >= 2 else 1.0))) for k, q in enumerate(quad)]   # 内沿低一点，斜着往里收
+        p.f(front, slot)
+        p.f(list(reversed(back)), slot)
+        for i in range(4):
+            j = (i + 1) % 4
+            p.f([back[i], back[j], front[j], front[i]], slot)
+
+
+# ---------- 画框：三种尺寸；外圈深色木线脚、里面一道铜色内沿，画布和画里一块模糊的人影 ----------
+
+PICTURES = {"picture_a": (0.6, 0.8), "picture_b": (0.9, 0.62), "picture_c": (0.5, 0.5)}
+
+
+def pictures():
+    for name, (w, h) in PICTURES.items():
+        p = Part(name)
+        frame_ring(p, w + 0.1, h + 0.1, 0.05, 0.0, "dark_wood", 0.07)
+        frame_ring(p, w + 0.01, h + 0.01, 0.045, 0.0, "brass", 0.012)
+        p.box(V(0, 0, 0.03), (w, h, 0.01), "canvas")
+        # 画里的人影：一个模糊的头肩剪影，只是一块颜色
+        p.ball(V(0, h * 0.12, 0.036), w * 0.11, "figure", 10, (1.0, 1.25, 0.08))
+        p.ball(V(0, -h * 0.28, 0.036), w * 0.26, "figure", 12, (1.0, 0.75, 0.08))
+        p.build()
+
+
+# ---------- 镜子：雕花木框、镜面；蒙布单独一件（从上沿垂下来，盖住大半，下面露出一截） ----------
+
+def mirror():
+    p = Part("mirror")
+    w, h = 0.6, 1.0
+    frame_ring(p, w + 0.14, h + 0.14, 0.05, 0.0, "dark_wood", 0.09)
+    p.box(V(0, 0, 0.03), (w + 0.01, h + 0.01, 0.01), "glass")
+    p.ball(V(0, h / 2 + 0.1, 0.025), 0.06, "dark_wood", 10, (1.6, 1.0, 0.4))                           # 顶上一朵雕花
+    p.build()
+
+    c = Part("mirror_cover")
+
+    def drape(x, y):
+        # 布从上沿搭下来：贴着镜面，往下慢慢鼓出、有几道竖褶
+        fold = 0.02 * math.sin(x * 22.0 + 1.3) + 0.012 * math.sin(x * 47.0)
+        return 0.075 + max(0.0, 0.45 - y) * 0.05 + fold * min(1.0, (0.6 - y) * 1.5)
+
+    xs = [-0.45 + i * 0.03 for i in range(31)]
+    ys = [0.62 - i * 0.04 for i in range(32)]
+    top, bot = [], []
+    for y in ys:
+        top.append([c.v(V(x * (1.0 + (0.62 - y) * 0.08), y, drape(x, y))) for x in xs])
+        bot.append([c.v(V(x * (1.0 + (0.62 - y) * 0.08), y, drape(x, y) - 0.008)) for x in xs])
+    for j in range(len(ys) - 1):
+        for i in range(len(xs) - 1):
+            q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            c.f([top[b][a] for a, b in q], "cloth", True)
+            c.f([bot[b][a] for a, b in reversed(q)], "cloth", True)
+    # 顶上一道搭在框上的折边
+    c.bar([V(-0.46, 0.62, 0.02), V(0, 0.64, 0.02), V(0.46, 0.62, 0.02)], 0.08, 0.03, "cloth", up=V(0, 0, 1))
+    c.build()
+
+
+# ---------- 黑板：木框、墨绿板面、粉笔槽里几根粉笔和一块板擦 ----------
+
+def blackboard():
+    p = Part("blackboard")
+    frame_ring(p, 2.5, 1.3, 0.05, 0.0, "dark_wood", 0.07)
+    p.box(V(0, 0, 0.03), (2.37, 1.17, 0.01), "board")
+    p.box(V(0, -0.6, 0.08), (2.4, 0.03, 0.08), "dark_wood")
+    p.box(V(0, -0.585, 0.115), (2.4, 0.02, 0.01), "dark_wood")
+    for x, l in ((-0.7, 0.07), (-0.62, 0.05), (0.3, 0.08)):
+        p.tube([V(x, -0.575, 0.07), V(x + l, -0.575, 0.075)], 0.006, "paper", 6)
+    p.box(V(0.6, -0.565, 0.08), (0.14, 0.04, 0.05), "dark_wood")
+    p.box(V(0.6, -0.585, 0.08), (0.14, 0.01, 0.05), "black")
+    p.build()
+
+
+# ---------- 布告板：木框、软木板；两套钉上去的纸（有的是寻人启事的样子：一块灰影，没有字） ----------
+
+def noticeboard():
+    p = Part("noticeboard")
+    frame_ring(p, 1.0, 0.7, 0.04, 0.0, "dark_wood", 0.04)
+    p.box(V(0, 0, 0.025), (0.93, 0.63, 0.01), "cork")
+    p.build()
+    papers = {
+        "notice_papers_a": [(-0.3, 0.1, 0.2, -0.08, True), (-0.05, -0.08, 0.16, 0.05, False), (0.22, 0.12, 0.22, 0.12, True),
+                            (0.3, -0.15, 0.15, -0.1, False)],
+        "notice_papers_b": [(-0.28, -0.05, 0.22, 0.06, True), (0.0, 0.14, 0.17, -0.04, False), (0.05, -0.12, 0.18, 0.1, True),
+                            (0.3, 0.05, 0.16, -0.12, False), (-0.12, 0.18, 0.14, 0.15, False)],
+    }
+    for name, items in papers.items():
+        q = Part(name)
+        for k, (x, y, w, a, photo) in enumerate(items):
+            rot = Matrix.Rotation(a, 3, "Z")
+            z = 0.032 + k * 0.002
+            # 纸：下角微微卷起
+            q.box(V(x, y, z), (w, w * 1.35, 0.002), "paper", rot)
+            q.box(V(x, y, z) + rot @ V(w * 0.38, -w * 0.6, 0.006), (w * 0.22, w * 0.12, 0.002), "paper", rot @ rx(-0.5))
+            if photo:
+                q.box(V(x, y, z + 0.002) + rot @ V(0, w * 0.22, 0), (w * 0.5, w * 0.55, 0.002), "stone", rot)
+            for k2 in range(3 if not photo else 2):                                                       # 几行看不清的“字”
+                q.box(V(x, y, z + 0.002) + rot @ V(0, -w * (0.15 + k2 * 0.12), 0), (w * 0.7, 0.008, 0.001), "black", rot)
+            q.ball(V(x, y, z + 0.006) + rot @ V(0, w * 0.6, 0), 0.008, "pin", 6)
+        q.build()
+
+
+# ---------- 衣帽架：车削立杆、三条弯脚、顶上一圈弯钩；外套单独一件 ----------
+
+def coat_rack():
+    p = Part("coat_rack")
+    p.lathe([(0.03, 0.06), (0.025, 0.2), (0.02, 1.0), (0.024, 1.6), (0.03, 1.66), (0.022, 1.75), (0.04, 1.8),
+             (0.03, 1.84), (0.0, 1.86)], "dark_wood", 10)
+    for i in range(3):
+        a = 2 * math.pi * i / 3
+        d = V(math.cos(a), 0, math.sin(a))
+        p.tube([V(0, 0.18, 0), d * 0.14 + V(0, 0.08, 0), d * 0.25 + V(0, 0.015, 0)], 0.018, "dark_wood", 6)
+    for i in range(6):
+        a = 2 * math.pi * i / 6 + 0.3
+        d = V(math.cos(a), 0, math.sin(a))
+        y = 1.68 if i % 2 else 1.6
+        p.tube([V(0, y, 0), d * 0.09 + V(0, y + 0.06, 0), d * 0.13 + V(0, y + 0.12, 0)], 0.008, "brass", 5)
+        p.ball(d * 0.13 + V(0, y + 0.13, 0), 0.013, "brass", 6)
+    p.build()
+
+    c = Part("coat")
+    # 挂在钩子上的长外套：领口窄、肩膀塌着、往下慢慢张开，前襟有一道缝
+    c.lathe([(0.0, 1.66), (0.04, 1.64), (0.12, 1.58), (0.2, 1.5), (0.21, 1.3), (0.2, 1.0), (0.23, 0.7), (0.26, 0.5),
+             (0.25, 0.48), (0.0, 0.5)], "cloth", 16, Matrix.Translation(V(0, 0, 0.13)) @ Matrix.Diagonal((1.0, 1.0, 0.42, 1.0)))
+    c.box(V(0, 1.05, 0.13 + 0.105), (0.01, 1.0, 0.01), "black")
+    for s in (-1, 1):                                                                                     # 垂着的袖子
+        c.tube([V(0.19 * s, 1.5, 0.13), V(0.21 * s, 1.2, 0.15), V(0.2 * s, 0.9, 0.15)], 0.045, "cloth", 8)
+    c.build()
+
+
+# ---------- 铁桶：往上张开的桶身、卷边、两道箍、提梁；桶里的东西单独一件 ----------
+
+def bucket():
+    p = Part("bucket")
+    p.lathe([(0.0, 0.0), (0.14, 0.0), (0.145, 0.01), (0.168, 0.33), (0.178, 0.345), (0.172, 0.355), (0.162, 0.34),
+             (0.138, 0.03), (0.0, 0.03)], "frame", 18)
+    for y, r in ((0.08, 0.148), (0.27, 0.162)):
+        p.torus(V(0, y, 0), Matrix.Identity(4), r, 0.006, "frame", 18, 4)
+    p.tube([V(-0.17, 0.32, 0)] + [V(-0.17 * math.cos(math.pi * k / 10), 0.32 + 0.16 * math.sin(math.pi * k / 10), 0.02)
+                                   for k in range(1, 10)] + [V(0.17, 0.32, 0)], 0.005, "frame", 4)
+    p.build()
+    w = Part("bucket_fill")
+    w.lathe([(0.0, 0.29), (0.16, 0.29), (0.16, 0.3), (0.0, 0.3)], "black", 16)
+    w.build()
+
+
+# ---------- 蜡烛：两簇不同的摆法，高低粗细不一，有的淌着蜡泪，火苗在里面（灯光由游戏打） ----------
+
+def candles():
+    sets = {
+        "candles_a": [(0.0, 0.0, 0.38, 0.04), (0.12, 0.08, 0.22, 0.035), (-0.14, 0.06, 0.15, 0.04), (0.05, -0.15, 0.3, 0.03),
+                      (-0.08, -0.1, 0.09, 0.045), (0.2, -0.05, 0.12, 0.03)],
+        "candles_b": [(-0.05, 0.03, 0.26, 0.045), (0.1, -0.06, 0.4, 0.035), (-0.18, -0.12, 0.12, 0.04), (0.16, 0.14, 0.18, 0.03),
+                      (-0.1, 0.18, 0.08, 0.04)],
+    }
+    for name, items in sets.items():
+        p = Part(name)
+        p.lathe([(0.0, 0.0), (0.32, 0.0), (0.3, 0.008), (0.0, 0.01)], "wax", 20, Matrix.Diagonal((1.0, 1.0, 0.8, 1.0)))   # 一摊蜡
+        for k, (x, z, h, r) in enumerate(items):
+            top = [(0.0, 0.0), (r * 1.15, 0.0), (r, 0.02), (r * 0.98, h * 0.7), (r, h - 0.01), (r * 0.7, h), (0.0, h - 0.01)]
+            p.lathe(top, "wax", 10, Matrix.Translation(V(x, 0, z)))
+            for j in range(2):                                                                            # 蜡泪
+                a = k * 1.7 + j * 2.4
+                d = V(math.cos(a), 0, math.sin(a)) * r
+                p.tube([V(x, h - 0.01, z) + d, V(x, h * 0.6, z) + d * 1.1, V(x, h * 0.35 - 0.02 * j, z) + d * 1.05],
+                       0.006, "wax", 4)
+            p.tube([V(x, h - 0.005, z), V(x, h + 0.012, z)], 0.0025, "black", 3)
+            if k != 3:
+                p.ball(V(x, h + 0.035, z), 0.009, "flame", 8, (1.0, 2.4, 1.0))
+        p.build()
+
+
+# ---------- 铁笼：上下框、一圈竖栏、顶上横栏、一扇带合页和挂锁的门；高 1.5，游戏里按高度缩放 ----------
+
+def cage():
+    p = Part("cage")
+    h = 1.5
+    for y in (0.03, h):
+        p.tube([V(-0.58, y, -0.58), V(0.58, y, -0.58), V(0.58, y, 0.58), V(-0.58, y, 0.58)], 0.02, "frame", 6, close_path=True)
+    for t in [-0.58 + 1.16 * i / 7 for i in range(8)]:
+        for a, b in ((V(t, 0.03, -0.58), V(t, h, -0.58)), (V(-0.58, 0.03, t), V(-0.58, h, t)), (V(0.58, 0.03, t), V(0.58, h, t))):
+            p.tube([a, b], 0.011, "frame", 5)
+        if abs(t) > 0.3:
+            p.tube([V(t, 0.03, 0.58), V(t, h, 0.58)], 0.011, "frame", 5)
+        p.tube([V(t, h, -0.58), V(t, h, 0.58)], 0.009, "frame", 4)
+    # 门：前面中间那一扇，框住几根栏杆
+    p.tube([V(-0.3, 0.05, 0.6), V(0.3, 0.05, 0.6), V(0.3, h - 0.05, 0.6), V(-0.3, h - 0.05, 0.6)], 0.015, "frame", 6, close_path=True)
+    for x in (-0.15, 0.0, 0.15):
+        p.tube([V(x, 0.05, 0.6), V(x, h - 0.05, 0.6)], 0.011, "frame", 5)
+    for y in (0.3, h - 0.3):
+        p.tube([V(-0.32, y, 0.6), V(-0.32, y + 0.08, 0.6)], 0.016, "frame", 6)
+    p.box(V(0.33, h * 0.5, 0.63), (0.07, 0.08, 0.03), "black")                                              # 挂锁
+    p.torus(V(0.33, h * 0.5 + 0.06, 0.63), Matrix.Rotation(math.pi / 2, 4, "X"), 0.025, 0.006, "steel", 10, 4)
+    p.build()
+
+
+# ---------- 棺材：六边形的棺身（肩部最宽）、里面衬着黑，四只铜把手；棺盖单独一件 ----------
+
+def hexagon(z_head, z_shoulder, z_foot, w_head, w_shoulder, w_foot):
+    return [V(-w_head, 0, z_head), V(w_head, 0, z_head), V(w_shoulder, 0, z_shoulder), V(w_foot, 0, z_foot),
+            V(-w_foot, 0, z_foot), V(-w_shoulder, 0, z_shoulder)]
+
+
+def prism(p, outline, y0, y1, slot, top_slot=None):
+    a = [p.v(q + V(0, y0, 0)) for q in outline]
+    b = [p.v(q + V(0, y1, 0)) for q in outline]
+    n = len(outline)
+    p.f(list(reversed(a)), slot)
+    p.f(b, top_slot or slot)
+    for i in range(n):
+        p.f([a[i], a[(i + 1) % n], b[(i + 1) % n], b[i]], slot)
+
+
+def coffin():
+    p = Part("coffin")
+    outer = hexagon(-1.0, -0.5, 1.0, 0.25, 0.36, 0.2)
+    prism(p, outer, 0.0, 0.08, "dark_wood")                                                               # 底座线脚
+    prism(p, [q * 0.97 for q in outer], 0.08, 0.5, "dark_wood")
+    prism(p, [q * 0.97 for q in hexagon(-1.0, -0.5, 1.0, 0.23, 0.33, 0.18)], 0.48, 0.505, "black")          # 里面的衬
+    for s in (-1, 1):
+        for z in (-0.3, 0.4):
+            w = 0.36 - (0.16 * (z + 0.5) / 1.5 if z > -0.5 else 0.0)
+            p.tube([V(s * (w * 0.97 + 0.0), 0.3, z - 0.08), V(s * (w * 0.97 + 0.04), 0.27, z), V(s * (w * 0.97 + 0.0), 0.3, z + 0.08)],
+                   0.01, "brass", 5)
+    p.build()
+
+    lid = Part("coffin_lid")
+    prism(lid, [q * 1.02 for q in outer], 0.0, 0.04, "dark_wood")
+    prism(lid, [q * 0.85 for q in outer], 0.04, 0.07, "dark_wood")                                       # 中间凸起一层
+    lid.build()
+
+
+# ---------- 祭台的台座：三级、每级带一道收进去的线脚，正面刻着几道竖槽；菱形还是游戏里另做 ----------
+
+def altar():
+    p = Part("altar")
+    for i in range(3):
+        w = 1.3 - i * 0.35
+        y0 = i * 0.25
+        p.loft([(y0, w, w, 0.02), (y0 + 0.2, w, w, 0.02), (y0 + 0.21, w - 0.03, w - 0.03, 0.02),
+                (y0 + 0.235, w - 0.03, w - 0.03, 0.02), (y0 + 0.25, w, w, 0.02)], "stone", corner=1, smooth=False)
+        for side in range(4):                                                                             # 每面几道竖槽
+            rot = Matrix.Rotation(side * math.pi / 2, 3, "Y")
+            for k in range(-2, 3):
+                p.box(rot @ V(k * w * 0.3, y0 + 0.1, w + 0.003), (0.02, 0.14, 0.01), "black", rot)
+    p.build()
+
+
+# ---------- 骨头：两堆长长短短的骨头（两头鼓起的骨节），一个简化的头骨（颅顶、下颌、两个黑眼窝） ----------
+
+def bone(p, a, b, r):
+    a, b = Vector(a), Vector(b)
+    d = (b - a).normalized()
+    p.tube([a + d * r, a.lerp(b, 0.5), b - d * r], r * 0.6, "bone", 6)
+    side = d.cross(V(0, 1, 0)).normalized() if abs(d.y) < 0.9 else V(1, 0, 0)
+    for end in (a, b):
+        for s in (-1, 1):
+            p.ball(end + side * r * 0.45 * s, r, "bone", 6)
+
+
+def bones():
+    rnd_state = [11]
+
+    def rnd():
+        rnd_state[0] = (rnd_state[0] * 1103515245 + 12345) % 2147483648
+        return rnd_state[0] / 2147483648
+
+    for name, count in (("bones_a", 9), ("bones_b", 13)):
+        p = Part(name)
+        for i in range(count):
+            l = 0.15 + rnd() * 0.3
+            a = rnd() * 2 * math.pi
+            cx, cz = (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.6
+            y = 0.02 + i * 0.008 + rnd() * 0.02
+            d = V(math.cos(a), (rnd() - 0.5) * 0.15, math.sin(a)) * (l / 2)
+            bone(p, V(cx, y, cz) - d, V(cx, y, cz) + d, 0.018 + rnd() * 0.008)
+        for k in range(3):                                                                                # 几根弯的肋骨
+            a = rnd() * 2 * math.pi
+            c = V((rnd() - 0.5) * 0.4, 0.02, (rnd() - 0.5) * 0.4)
+            pts = [c + V(math.cos(a + t) * 0.15, 0.02 * math.sin(t * 2), math.sin(a + t) * 0.15) for t in (0, 0.4, 0.8, 1.2, 1.6)]
+            p.tube(pts, 0.008, "bone", 4)
+        p.build()
+
+    s = Part("skull")
+    s.ball(V(0, 0.1, 0), 0.1, "bone", 14, (0.85, 0.9, 1.0))
+    s.ball(V(0, 0.05, 0.06), 0.06, "bone", 10, (1.0, 0.8, 0.9))                                           # 脸颊
+    s.ball(V(0, 0.02, 0.07), 0.045, "bone", 8, (1.0, 0.5, 0.9))                                           # 下颌
+    for sx in (-0.035, 0.035):
+        s.ball(V(sx, 0.09, 0.085), 0.024, "black", 8, (1.0, 0.9, 0.5))                                    # 眼窝
+    s.ball(V(0, 0.055, 0.105), 0.012, "black", 6, (0.8, 1.2, 0.5))                                        # 鼻孔
+    s.build()
+
+
+# ---------- 铁链：8、12、16、22 节四种长短，末端的钩子单独一件 ----------
+
+def chains():
+    for links in CHAIN_LINKS:
+        chain(links)
+    _chain_hook()
+
+
+CHAIN_LINKS = (8, 12, 16, 22)
+
+
+def chain(links):
+    p = Part("chain_%d" % links)
+    for i in range(links):
+        rot = Matrix.Rotation(math.pi / 2 if i % 2 else 0.0, 4, "Y") @ Matrix.Rotation(math.pi / 2, 4, "Z") @ \
+              Matrix.Diagonal((1.0, 1.0, 1.6, 1.0))
+        p.torus(V(0, -0.05 - i * 0.09, 0), Matrix.Translation(V(0, 0, 0)) @ rot @ Matrix.Diagonal((1.0, 1.0, 1.0, 1.0)),
+                0.03, 0.008, "frame", 12, 4)
+    p.build()
+
+
+def _chain_hook():
+    h = Part("chain_hook")
+    h.torus(V(0, -0.03, 0), Matrix.Rotation(math.pi / 2, 4, "Z") @ Matrix.Diagonal((1.0, 1.0, 1.6, 1.0)), 0.03, 0.008, "frame", 12, 4)
+    hook = [V(0, -0.08, 0), V(0, -0.2, 0), V(0.02, -0.26, 0), V(0.07, -0.27, 0), V(0.1, -0.22, 0), V(0.09, -0.17, 0)]
+    h.tube(hook, 0.011, "frame", 6)
+    h.ball(V(0.09, -0.165, 0), 0.012, "frame", 6, (1.0, 1.4, 1.0))
+    h.build()
+
+
+# ---------- 垂布：横杆单独一件；布高 2 米（游戏里按长短缩放），竖褶、下摆参差 ----------
+
+def hanging_sheet():
+    r = Part("sheet_rod")
+    r.tube([V(-0.8, -0.05, 0), V(0.8, -0.05, 0)], 0.016, "frame", 8)
+    for x in (-0.75, 0.75):
+        r.tube([V(x, 0.0, 0), V(x, -0.05, 0)], 0.008, "frame", 4)
+    r.build()
+
+    c = Part("hanging_sheet")
+    xs = [-0.7 + i * 0.025 for i in range(57)]
+    ys = [-i * 0.05 for i in range(41)]
+    top, bot = [], []
+    for j, y in enumerate(ys):
+        rowt, rowb = [], []
+        for x in xs:
+            fold = 0.03 * math.sin(x * 14.0) + 0.015 * math.sin(x * 31.0 + 0.7)
+            fold *= 0.35 + 0.65 * min(1.0, -y / 0.6)                                                     # 越往下褶越深
+            yy = y
+            if j == len(ys) - 1:
+                yy = y + 0.06 * abs(math.sin(x * 9.0)) + 0.03 * abs(math.sin(x * 23.0))                   # 参差的下摆
+            rowt.append(c.v(V(x, yy, fold + 0.004)))
+            rowb.append(c.v(V(x, yy, fold - 0.004)))
+        top.append(rowt)
+        bot.append(rowb)
+    for j in range(len(ys) - 1):
+        for i in range(len(xs) - 1):
+            q = [(i, j), (i, j + 1), (i + 1, j + 1), (i + 1, j)]
+            c.f([top[b][a] for a, b in q], "cloth", True)
+            c.f([bot[b][a] for a, b in reversed(q)], "cloth", True)
+    c.build()
+
+
 def preview(objs, out_dir):
     world = bpy.data.worlds.new("dim")
     world.use_nodes = True
@@ -974,7 +1351,9 @@ def main():
         bsdf.inputs["Metallic"].default_value = metal
     for build in (bed, rocking_chair, crib, wheelchair, doll, mannequin,
                   optable, gurney, iv_stand, cart, sink, bathtub, lockers, cabinet,
-                  chair, stool, table, long_table, desk, bench, shelf, crate, grandfather, clock):
+                  chair, stool, table, long_table, desk, bench, shelf, crate, grandfather, clock,
+                  pictures, mirror, blackboard, noticeboard, coat_rack, bucket, candles, cage, coffin, altar, bones,
+                  chains, hanging_sheet):
         build()
     objs = [o for o in bpy.data.objects]
     bpy.ops.object.select_all(action="DESELECT")
@@ -997,8 +1376,23 @@ def main():
                  "long_table": (-0.8, 5.0), "desk": (1.0, 5.0), "bench": (2.4, 5.0), "shelf": (4.2, 4.6),
                  "shelf_jars_a": (4.2, 4.6), "shelf_jars_b": (99, 99), "shelf_jars_c": (99, 99), "crate": (-4.4, 6.0),
                  "grandfather": (5.4, 4.6), "pendulum": (99, 99), "clock_case": (99, 99), "dial": (99, 99)}
+        if len(argv) > 2 and argv[2] == "last":
+            # 只看最后一批：墙上的挂在 1.4 米高、吊顶的从 2.6 米垂下来，其余放地上
+            last = {"picture_a": (-4.6, 0, 1.6), "picture_b": (-3.7, 0, 1.6), "picture_c": (-2.9, 0, 1.6),
+                    "mirror": (-1.9, 0, 1.5), "mirror_cover": (-1.9, 0, 1.5), "blackboard": (0.0, 0, 1.6),
+                    "noticeboard": (2.0, 0, 1.6), "notice_papers_a": (2.0, 0, 1.6), "coat_rack": (3.2, 0.6, 0),
+                    "coat": (3.2, 0.6, 0), "bucket": (-4.5, 2.5, 0), "bucket_fill": (-4.5, 2.5, 0),
+                    "candles_a": (-3.6, 2.6, 0), "cage": (-2.2, 2.4, 0), "coffin": (-0.3, 2.4, 0),
+                    "coffin_lid": (-0.15, 2.7, 0.5), "altar": (2.2, 2.0, 0), "bones_b": (4.2, 2.6, 0),
+                    "skull": (4.3, 2.8, 0), "chain_22": (-1.0, 0.8, 2.9), "chain_hook": (-1.0, 0.8, 2.9 - 2.03),
+                    "sheet_rod": (4.6, 0.6, 2.9), "hanging_sheet": (4.6, 0.6, 2.83)}
+            for o in objs:
+                x, z, y = last.get(o.name, (99, 99, 0))
+                o.location = (x, -z, y)
+            preview(objs, argv[1])
+            return
         for o in objs:
-            x, z = place[o.name]
+            x, z = place.get(o.name, (99, 99))
             o.location = (x, -z, 0.0)
             if o.name.startswith("doll"):
                 o.scale = (2.5, 2.5, 2.5)
