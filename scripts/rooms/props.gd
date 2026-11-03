@@ -1,6 +1,6 @@
 extends RefCounted
-## 实体库：房间里能摆的东西。大部分是 Blender 脚本建的模型（tools/blender/room_props.py → room_props.glb），
-## 少数（画框、镜子、黑板、祭台、棺材、笼子之类）还是用方块和圆柱拼出来的小模型。
+## 实体库：房间里能摆的东西，模型由 Blender 脚本生成（tools/blender/room_props.py → room_props.glb）；
+## 绑带、器械、外套这类随手加的小东西和血迹、粉笔痕迹还是在这里用方块和面片摆。
 ## 每个实体登记在 ENTITIES 里：放哪（place）、占地多大（foot：宽 × 深，米）、带什么气质（tags）。
 ## 房间配方（recipes.gd）按气质给权重挑实体，room.gd 负责摆放；这里只管“一件东西长什么样”。
 ##
@@ -228,18 +228,10 @@ func _table(n: Node3D) -> void:
 	solid(n, Vector3(1.4, 0.8, 0.8), Vector3(0, 0.4, 0))
 
 
-## 铁笼：一圈竖栏杆，上下两道框
+## 铁笼：一圈竖栏杆、顶上横栏、一扇挂着锁的门；高矮不一
 func _cage(n: Node3D) -> void:
-	var frame := _metal()
 	var h := rng.randf_range(1.2, 1.9)
-	for y: float in [0.03, h]:
-		for s: Array in [[Vector3(1.2, 0.04, 0.04), Vector3(0, 0, -0.58)], [Vector3(1.2, 0.04, 0.04), Vector3(0, 0, 0.58)],
-				[Vector3(0.04, 0.04, 1.2), Vector3(-0.58, 0, 0)], [Vector3(0.04, 0.04, 1.2), Vector3(0.58, 0, 0)]]:
-			room.box(s[0], s[1] + Vector3(0, y, 0), frame, false, Basis.IDENTITY, n)
-	for i in 8:
-		var t := -0.58 + 1.16 * i / 7.0
-		for p: Vector3 in [Vector3(t, 0, -0.58), Vector3(t, 0, 0.58), Vector3(-0.58, 0, t), Vector3(0.58, 0, t)]:
-			room.box(Vector3(0.025, h, 0.025), p + Vector3(0, h / 2.0, 0), frame, false, Basis.IDENTITY, n)
+	model("cage", n, {"frame": _metal()}, Transform3D(Basis.from_scale(Vector3(1.0, h / 1.5, 1.0)), Vector3.ZERO))
 	if rng.randf() < dread:
 		blood(n, Vector3(0, 0.004, 0), 0.9)
 	solid(n, Vector3(1.2, h, 1.2), Vector3(0, h / 2.0, 0))
@@ -256,34 +248,15 @@ func _crate(n: Node3D) -> void:
 	solid(n, Vector3(0.8, y, 0.8), Vector3(0, y / 2.0, 0))
 
 
-## 铁桶
+## 铁桶：卷边、两道箍、提梁；不安的桶里是血
 func _bucket(n: Node3D) -> void:
-	var b := CylinderMesh.new()
-	b.top_radius = 0.17
-	b.bottom_radius = 0.14
-	b.height = 0.35
-	b.radial_segments = 14
-	room.mesh_at(b, Transform3D(Basis.IDENTITY, Vector3(0, 0.175, 0)), _metal(), n)
-	var top := CylinderMesh.new()
-	top.top_radius = 0.155
-	top.bottom_radius = 0.155
-	top.height = 0.01
-	room.mesh_at(top, Transform3D(Basis.IDENTITY, Vector3(0, 0.3, 0)), m["gore"] if rng.randf() < dread else m["black"], n)
+	model("bucket", n, {"frame": _metal()})
+	model("bucket_fill", n, {"black": m["gore"] if rng.randf() < dread else m["black"]})
 
 
-## 一簇蜡烛，带一盏暖光
+## 一簇蜡烛（两种摆法），淌着蜡泪，带一盏暖光
 func _candles(n: Node3D) -> void:
-	for i in rng.randi_range(3, 7):
-		var h := rng.randf_range(0.08, 0.4)
-		var c := CylinderMesh.new()
-		c.top_radius = 0.035
-		c.bottom_radius = 0.04
-		c.height = h
-		c.radial_segments = 8
-		var pos := Vector3(rng.randf_range(-0.25, 0.25), h / 2.0, rng.randf_range(-0.25, 0.25))
-		room.mesh_at(c, Transform3D(Basis.IDENTITY, pos), m["wax"], n)
-		if rng.randf() < 0.8:
-			room.box(Vector3(0.02, 0.05, 0.02), pos + Vector3(0, h / 2.0 + 0.03, 0), m["flame"], false, Basis.IDENTITY, n)
+	model("candles_" + "ab"[rng.randi_range(0, 1)], n, {}, Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3.ZERO))
 	var l: OmniLight3D = room.lamp(Vector3.ZERO, Color(1.0, 0.6, 0.3), 0.7, 3.5, false, n)
 	l.position = Vector3(0, 0.5, 0)
 	var phase := rng.randf() * 10.0
@@ -314,11 +287,9 @@ func _optable(n: Node3D) -> void:
 	solid(n, Vector3(0.75, 0.85, 2.0), Vector3(0, 0.42, 0))
 
 
-## 祭台：三级台座，上方悬着缩小的黄铜菱形（刻纹和天上的利维坦一样），缓缓自转
+## 祭台：三级带线脚和竖槽的台座，上方悬着缩小的黄铜菱形（刻纹和天上的利维坦一样），缓缓自转
 func _altar(n: Node3D) -> void:
-	for i in 3:
-		var w := 2.6 - i * 0.7
-		room.box(Vector3(w, 0.25, w), Vector3(0, 0.125 + i * 0.25, 0), m["stone"], false, Basis.IDENTITY, n)
+	model("altar", n)
 	solid(n, Vector3(2.6, 0.75, 2.6), Vector3(0, 0.375, 0))
 	# 菱形按屋子高度缩放：大屋子 2.8 米高，5 米的小屋子里小一半
 	var room_h: float = room.size.y
@@ -417,33 +388,31 @@ func _dial(n: Node3D, pos: Vector3, r: float, speed: float) -> void:
 		room.tick(func(_t: float) -> void: pivot.rotation.z += rate * room.dt)
 
 
-## 画框：画面黑乎乎看不清；不安的被划破，或者整幅翻过来朝着墙
+const PICTURES := {"picture_a": Vector2(0.6, 0.8), "picture_b": Vector2(0.9, 0.62), "picture_c": Vector2(0.5, 0.5)}   # 画布尺寸
+
+
+## 画框：三种尺寸；画面黑乎乎看不清，只有一块人影；不安的被划破，或者整幅翻过来朝着墙
 func _picture(n: Node3D) -> void:
-	var w := rng.randf_range(0.5, 1.0)
-	var h := w * rng.randf_range(0.7, 1.3)
-	room.box(Vector3(w + 0.1, h + 0.1, 0.05), Vector3(0, 0, 0.025), m["dark_wood"], false, Basis.IDENTITY, n)
+	var name: String = PICTURES.keys()[rng.randi_range(0, PICTURES.size() - 1)]
+	var w: float = PICTURES[name].x
+	var h: float = PICTURES[name].y
 	if rng.randf() < dread * 0.3:
-		room.box(Vector3(w, h, 0.01), Vector3(0, 0, 0.055), m["wood"], false, Basis.IDENTITY, n)   # 背面朝外
+		model(name, n, {"canvas": m["wood"], "figure": m["wood"]})   # 背面朝外
 		return
-	var canvas: Material = room.mat(Color(0.12, 0.1, 0.08).lerp(Color(0.3, 0.26, 0.2), rng.randf()), 0.9)
-	room.box(Vector3(w, h, 0.01), Vector3(0, 0, 0.055), canvas, false, Basis.IDENTITY, n)
-	room.box(Vector3(w * 0.3, h * 0.4, 0.005), Vector3(rng.randf_range(-0.1, 0.1) * w, -h * 0.05, 0.062),
-		room.mat(Color(0.35, 0.3, 0.26), 0.9), false, Basis.IDENTITY, n)
+	var tone := Color(0.12, 0.1, 0.08).lerp(Color(0.3, 0.26, 0.2), rng.randf())
+	# 人影只比画布亮一点，看得出有个人，看不清是谁
+	model(name, n, {"canvas": room.mat(tone, 0.9), "figure": room.mat(tone.lerp(Color(0.4, 0.35, 0.3), 0.35), 0.9)})
 	if rng.randf() < dread * 0.6:
 		for i in 2:
-			room.box(Vector3(0.02, h * 0.9, 0.006), Vector3(rng.randf_range(-0.3, 0.3) * w, 0, 0.065), m["black"],
+			room.box(Vector3(0.02, h * 0.9, 0.006), Vector3(rng.randf_range(-0.3, 0.3) * w, 0, 0.045), m["black"],
 				false, Basis(Vector3.BACK, rng.randf_range(-0.4, 0.4)), n)
 
 
-## 镜子：多半蒙着一块布
+## 镜子：雕花木框；多半蒙着一块布
 func _mirror(n: Node3D) -> void:
-	var w := 0.6
-	var h := 1.0
-	room.box(Vector3(w + 0.12, h + 0.12, 0.05), Vector3(0, 0, 0.025), m["dark_wood"], false, Basis.IDENTITY, n)
-	room.box(Vector3(w, h, 0.01), Vector3(0, 0, 0.055), m["glass"], false, Basis.IDENTITY, n)
+	model("mirror", n)
 	if rng.randf() < 0.4 + dread * 0.5:
-		room.box(Vector3(w + 0.3, h + 0.4, 0.02), Vector3(0, -0.1, 0.075), m["sheet"], false,
-			Basis(Vector3.BACK, rng.randf_range(-0.08, 0.08)), n)
+		model("mirror_cover", n, {"cloth": m["sheet"]}, Transform3D(Basis(Vector3.BACK, rng.randf_range(-0.08, 0.08)), Vector3.ZERO))
 
 
 # ---------- 吊顶的 ----------
@@ -455,15 +424,11 @@ func _chains(n: Node3D) -> void:
 		var chain := Node3D.new()
 		chain.position = Vector3(rng.randf_range(-0.25, 0.25), 0, rng.randf_range(-0.25, 0.25))
 		n.add_child(chain)
-		var links := rng.randi_range(8, 22)
-		for i in links:
-			var rot := Basis(Vector3.UP, PI / 2.0 if i % 2 == 1 else 0.0)
-			room.box(Vector3(0.05, 0.11, 0.015), Vector3(0, -0.05 - i * 0.09, 0), frame, false, rot, chain)
+		var links: int = [8, 12, 16, 22][rng.randi_range(0, 3)]
+		model("chain_%d" % links, chain, {"frame": frame})
 		var end := -0.05 - links * 0.09
 		if rng.randf() < 0.4 + dread * 0.4:
-			room.box(Vector3(0.02, 0.18, 0.02), Vector3(0, end - 0.08, 0), frame, false, Basis.IDENTITY, chain)
-			room.box(Vector3(0.12, 0.02, 0.02), Vector3(0.05, end - 0.17, 0), frame, false, Basis.IDENTITY, chain)
-			room.box(Vector3(0.02, 0.07, 0.02), Vector3(0.1, end - 0.13, 0), frame, false, Basis.IDENTITY, chain)
+			model("chain_hook", chain, {"frame": frame}, Transform3D(Basis.IDENTITY, Vector3(0, end + 0.03, 0)))
 		var phase := rng.randf() * TAU
 		var amp := rng.randf_range(0.02, 0.06)
 		room.tick(func(t: float) -> void:
@@ -473,14 +438,14 @@ func _chains(n: Node3D) -> void:
 
 ## 垂布：从天花板的一根杆上挂下来的一块旧布，微微晃；不安的上面有血
 func _sheet(n: Node3D) -> void:
-	room.box(Vector3(1.6, 0.03, 0.03), Vector3(0, -0.05, 0), _metal(), false, Basis.IDENTITY, n)
+	model("sheet_rod", n, {"frame": _metal()})
 	var cloth := Node3D.new()
 	cloth.position = Vector3(0, -0.07, 0)
 	n.add_child(cloth)
 	var h := rng.randf_range(1.6, 2.4)
-	room.box(Vector3(1.4, h, 0.02), Vector3(0, -h / 2.0, 0), m["sheet"], false, Basis.IDENTITY, cloth)
+	model("hanging_sheet", cloth, {"cloth": m["sheet"]}, Transform3D(Basis.from_scale(Vector3(1.0, h / 2.0, 1.0)), Vector3.ZERO))
 	if rng.randf() < dread:
-		blood(cloth, Vector3(rng.randf_range(-0.3, 0.3), -h * 0.6, 0.012), 0.6, 1, Vector3.BACK)
+		blood(cloth, Vector3(rng.randf_range(-0.3, 0.3), -h * 0.6, 0.05), 0.6, 1, Vector3.BACK)
 	var phase := rng.randf() * TAU
 	room.tick(func(t: float) -> void: cloth.rotation.x = 0.03 * sin(t * 0.8 + phase))
 
@@ -512,13 +477,11 @@ func _gurney(n: Node3D) -> void:
 	solid(n, Vector3(0.7, 0.85, 2.0), Vector3(0, 0.42, 0))
 
 
-## 棺材：深色木头，棺盖错开一截，里面黑洞洞的
+## 棺材：六边形的深色棺身、铜把手，棺盖错开一截，里面黑洞洞的
 func _coffin(n: Node3D) -> void:
-	var wood: Material = m["dark_wood"]
-	room.box(Vector3(0.7, 0.5, 2.0), Vector3(0, 0.25, 0), wood, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.6, 0.02, 1.9), Vector3(0, 0.5, 0), m["black"], false, Basis.IDENTITY, n)
+	model("coffin", n)
 	var open := rng.randf_range(0.2, 0.7) * (0.3 + dread)
-	room.box(Vector3(0.74, 0.06, 2.04), Vector3(0.1, 0.53, open), wood, false, Basis(Vector3.UP, rng.randf_range(-0.15, 0.15)), n)
+	model("coffin_lid", n, {}, Transform3D(Basis(Vector3.UP, rng.randf_range(-0.15, 0.15)), Vector3(0.1, 0.505, open)))
 	if rng.randf() < dread:
 		blood(n, Vector3(0, 0.003, 1.2), 0.7)
 	solid(n, Vector3(0.75, 0.56, 2.05), Vector3(0, 0.28, 0))
@@ -568,25 +531,12 @@ func _stool(n: Node3D) -> void:
 		n.position.y += 0.17
 
 
-## 一堆骨头：长长短短的骨头散在一起，有时有一个头骨
+## 一堆骨头：长长短短的骨头和几根肋骨散在一起（两种堆法），有时有一个头骨
 func _bones(n: Node3D) -> void:
 	var bone := mat_bone()
-	for i in rng.randi_range(6, 14):
-		var b := CylinderMesh.new()
-		var l := rng.randf_range(0.15, 0.45)
-		b.top_radius = 0.018
-		b.bottom_radius = 0.022
-		b.height = l
-		b.radial_segments = 6
-		var rot := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, PI / 2.0 + rng.randf_range(-0.3, 0.3))
-		room.mesh_at(b, Transform3D(rot, Vector3(rng.randf_range(-0.35, 0.35), 0.03 + i * 0.008, rng.randf_range(-0.35, 0.35))), bone, n)
+	model("bones_" + "ab"[rng.randi_range(0, 1)], n, {"bone": bone}, Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3.ZERO))
 	if rng.randf() < 0.5 + dread * 0.3:
-		var skull := SphereMesh.new()
-		skull.radius = 0.1
-		skull.height = 0.19
-		room.mesh_at(skull, Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(0.1, 0.1, 0.05)), bone, n)
-		for sx: float in [-0.035, 0.035]:
-			room.box(Vector3(0.03, 0.03, 0.02), Vector3(0.1 + sx, 0.11, 0.14), m["black"], false, Basis.IDENTITY, n)
+		model("skull", n, {"bone": bone}, Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(0.1, 0, 0.05)))
 	if rng.randf() < dread:
 		blood(n, Vector3(0, 0.004, 0), 1.0)
 
@@ -635,15 +585,13 @@ func _desk(n: Node3D) -> void:
 
 ## 黑板：木框、墨绿的板面，上面是粉笔画的计数；越不安划得越多，还有几道用血画的
 func _blackboard(n: Node3D) -> void:
-	room.box(Vector3(2.5, 1.3, 0.05), Vector3(0, 0, 0.025), m["dark_wood"], false, Basis.IDENTITY, n)
-	room.box(Vector3(2.36, 1.16, 0.01), Vector3(0, 0, 0.055), room.mat(Color(0.05, 0.08, 0.06), 0.9), false, Basis.IDENTITY, n)
-	room.box(Vector3(2.4, 0.03, 0.08), Vector3(0, -0.6, 0.08), m["dark_wood"], false, Basis.IDENTITY, n)
+	model("blackboard", n, {"board": room.mat(Color(0.05, 0.08, 0.06), 0.9), "paper": room.mat(Color(0.75, 0.74, 0.7), 0.9)})
 	var rows := 1 + int(dread * 3.0)
 	for i in rows:
 		var y := 0.35 - i * 0.3
-		chalk(n, Vector3(rng.randf_range(-0.3, 0.3), y, 0.062), rng.randf_range(1.0, 1.6), TALLY)
+		chalk(n, Vector3(rng.randf_range(-0.3, 0.3), y, 0.037), rng.randf_range(1.0, 1.6), TALLY)
 	if rng.randf() < dread:
-		blood(n, Vector3(rng.randf_range(-0.8, 0.8), 0.1, 0.064), 0.3, DRIP, Vector3.BACK)
+		blood(n, Vector3(rng.randf_range(-0.8, 0.8), 0.1, 0.039), 0.3, DRIP, Vector3.BACK)
 
 
 ## 粉笔的痕迹：和血迹同一个着色器，换成粉笔的颜色
@@ -681,30 +629,15 @@ func _long_table(n: Node3D) -> void:
 	solid(n, Vector3(2.6, 0.8, 1.0), Vector3(0, 0.4, 0))
 
 
-## 布告板：软木板上钉着几张发黄的纸，有一张是寻人启事的样子（只有一块灰影，没有字）
+## 布告板：软木板上钉着几张发黄的纸（两种钉法），有的是寻人启事的样子（只有一块灰影，没有字）
 func _noticeboard(n: Node3D) -> void:
-	room.box(Vector3(1.0, 0.7, 0.04), Vector3(0, 0, 0.02), m["dark_wood"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.92, 0.62, 0.01), Vector3(0, 0, 0.045), room.mat(Color(0.32, 0.22, 0.13), 0.95), false, Basis.IDENTITY, n)
-	var paper: Material = room.mat(Color(0.55, 0.52, 0.42), 0.95)
-	for i in rng.randi_range(3, 6):
-		var w := rng.randf_range(0.14, 0.24)
-		var pos := Vector3(rng.randf_range(-0.34, 0.34), rng.randf_range(-0.2, 0.2), 0.052 + i * 0.001)
-		room.box(Vector3(w, w * 1.35, 0.002), pos, paper, false, Basis(Vector3.BACK, rng.randf_range(-0.15, 0.15)), n)
-		room.box(Vector3(w * 0.5, w * 0.5, 0.002), pos + Vector3(0, w * 0.25, 0.002), m["stone"], false, Basis.IDENTITY, n)
-		room.box(Vector3(0.015, 0.015, 0.01), pos + Vector3(0, w * 0.6, 0.004), m["gore"] if rng.randf() < dread else m["brass"],
-			false, Basis.IDENTITY, n)
+	model("noticeboard", n, {"cork": room.mat(Color(0.32, 0.22, 0.13), 0.95)})
+	model("notice_papers_" + "ab"[rng.randi_range(0, 1)], n, {"paper": room.mat(Color(0.55, 0.52, 0.42), 0.95),
+		"pin": m["gore"] if rng.randf() < dread else m["brass"]})
 
 
-## 衣帽架：一根立杆、三只脚、顶上几个钩子，挂着一件长外套
+## 衣帽架：车削立杆、三条弯脚、顶上一圈铜钩，多半挂着一件长外套
 func _coat_rack(n: Node3D) -> void:
-	var wood: Material = m["dark_wood"]
-	room.box(Vector3(0.05, 1.8, 0.05), Vector3(0, 0.9, 0), wood, false, Basis.IDENTITY, n)
-	for i in 3:
-		var a := TAU * i / 3.0
-		room.box(Vector3(0.04, 0.04, 0.4), Vector3(cos(a) * 0.15, 0.04, sin(a) * 0.15), wood, false, Basis(Vector3.UP, -a + PI / 2.0), n)
-		room.box(Vector3(0.025, 0.025, 0.18), Vector3(cos(a) * 0.07, 1.72, sin(a) * 0.07), wood, false,
-			Basis(Vector3.UP, -a + PI / 2.0) * Basis(Vector3.RIGHT, -0.5), n)
+	model("coat_rack", n)
 	if rng.randf() < 0.7:
-		room.box(Vector3(0.42, 1.1, 0.18), Vector3(0.0, 1.12, 0.14), m["black"] if rng.randf() < 0.5 else m["cloth"], false,
-			Basis(Vector3.RIGHT, 0.08), n)
-	solid(n, Vector3(0.4, 1.8, 0.4), Vector3(0, 0.9, 0))
+		model("coat", n, {"cloth": m["black"] if rng.randf() < 0.5 else m["cloth"]})
