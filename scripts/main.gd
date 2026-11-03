@@ -16,6 +16,7 @@ const Rain = preload("res://scripts/rain.gd")
 const Dust = preload("res://scripts/dust.gd")
 const DistantSounds = preload("res://scripts/distant_sounds.gd")
 const Hauler = preload("res://scripts/hauler.gd")
+const Watchman = preload("res://scripts/watchman.gd")
 const MUSIC = preload("res://assets/audio/liweitan.mp3")   # 背景音乐，导入设置里已开循环
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
@@ -100,6 +101,12 @@ func _ready() -> void:
 	hauler.distant = distant
 	add_child(hauler)
 
+	var watchman := Watchman.new()
+	watchman.name = "Watchman"
+	watchman.player = player
+	watchman.maze = maze
+	add_child(watchman)
+
 	var storm := Storm.new()
 	storm.name = "Storm"
 	storm.env = env
@@ -114,6 +121,7 @@ func _ready() -> void:
 	var debug := DebugHud.new()
 	debug.maze = maze
 	debug.player = player
+	debug.watchman = watchman
 	add_child(debug)
 
 	var bar := EnergyBar.new()

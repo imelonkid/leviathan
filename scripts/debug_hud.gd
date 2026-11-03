@@ -3,6 +3,7 @@ extends CanvasLayer
 
 var maze: Node3D
 var player: CharacterBody3D
+var watchman: Node3D             # 守夜人：只在调试信息打开时画在小地图上，平时不剧透
 var info: Label
 var minimap: Control
 
@@ -129,3 +130,9 @@ class Minimap extends Control:
 		var dir := Vector2(fwd.x, fwd.z).normalized()
 		draw_line(p, p + dir * cell * 2.5, Color(1, 0.8, 0.4), 2.0)
 		draw_circle(p, cell * 0.6, Color(1, 0.55, 0.3))
+		var w: Node3D = hud.watchman
+		if w and w.visible and hud.info.visible:
+			var wp: Vector2 = maze.world_to_block(w.global_position) * cell
+			var wf := w.global_transform.basis.z
+			draw_line(wp, wp + Vector2(wf.x, wf.z).normalized() * cell * 2.5, Color(0.7, 0.85, 1.0), 2.0)
+			draw_circle(wp, cell * 0.6, Color(0.75, 0.87, 1.0))
