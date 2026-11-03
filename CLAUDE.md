@@ -6,7 +6,7 @@
 
 Claude 在本项目里只做下面「负责」的事；越界的需求先停下来和用户确认，不要顺手改到别的项目里。
 
-- **本项目负责**：迷宫生成、场景与氛围（`scripts/`）、画质设置与菜单、导出配置（`export_presets.cfg`）、GitHub Actions 构建与 Releases 发布（`.github/workflows/`）、开发路线图（`ROADMAP.md`）
+- **本项目负责**：迷宫生成、场景与氛围（`scripts/`）、迷宫里的东西（原创的怪物，只做氛围：远处出现、走近就消失，不攻击、不追逐、没有死亡）、画质设置与菜单、导出配置（`export_presets.cfg`）、GitHub Actions 构建与 Releases 发布（`.github/workflows/`）、开发路线图（`ROADMAP.md`）
 - **本项目不负责**：服务器部署、注册表登记、门户发布流水线（游戏不部署到服务器，不走 melon-ci）；玩法系统（战斗、任务、AI 追逐）不在当前定位内，要加先确认；原片中的角色、造型、配乐、名称一律不加入
 - **与其他项目的关系**：无
 

@@ -40,13 +40,14 @@ godot --path .
 
 ## 重新生成模型
 
-建筑装饰件、地标、小楼和房间道具由 Blender 脚本生成（需要 Blender 4.2 以上），改了 `tools/blender/` 下的脚本后：
+建筑装饰件、地标、小楼、房间道具和迷宫里的东西由 Blender 脚本生成（需要 Blender 4.2 以上），改了 `tools/blender/` 下的脚本后：
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/trim_kit.py -- assets/models/trim_kit.glb
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/landmarks.py -- assets/models/landmarks.glb
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/room_props.py -- assets/models/room_props.glb
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/houses.py -- assets/models/houses.glb
+/Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python tools/blender/creatures.py -- assets/models/creatures.glb
 ```
 
 `landmarks.py` 后面再加一个目录参数，会顺便渲一张预览图到那里。
@@ -101,6 +102,7 @@ Esc 菜单里有低 / 中 / 高三档预设，也可以单独调整：
 - **拱廊墙**：部分隔墙的墙身开着并排两个穿透整块墙的拱洞，能看见隔壁，走不过去也滑翔不过去；庭院围墙上更多。
 - **建筑装饰件**：墙顶一道挑出的压檐，墙根一道基座，墙角朝街的一面立着壁柱和柱头，拱门两面贴着一圈楔形拱石和拱心石。模型由 `tools/blender/trim_kit.py` 在 Blender 里按参数生成，导出成 `assets/models/trim_kit.glb`，游戏里用同一个墙面着色器（浅一点、不怎么剥落）成批摆放。
 - **地标**：每层几座塔楼立在墙角上，高出墙头十几二十米——钟楼（四面开拱的钟室、四坡尖顶）、望楼（顶上一圈垛口）、尖塔（方塔转八角、细长尖顶），优先靠近庭院；每层还有两座门楼横跨长直街，两头带尖顶的墩子，楼身下面是 7.5 米高的门洞。远远认得出，可以当路标。由 `tools/blender/landmarks.py` 生成 `assets/models/landmarks.glb`，小地图上是白色小方块。第 1、2 层还各有两栋**带拱廊的小楼**（里层地方小，有时只放得下一栋）：沿直街的一段墙整段换成两三层的窄楼，底层朝街一排三个或五个拱，拱后是 2 米深的廊子，里面是钉死的门和窗，能进去避雨但穿不过去（迷宫走法不变）；楼上一排排拱窗，窗后也是那种荒凉的屋子，有的二楼挂着铁阳台；坡屋顶站得住。由 `tools/blender/houses.py` 生成 `assets/models/houses.glb`，小地图上是沿墙的一道白条。
+- **迷宫里的东西**：只做氛围，不攻击、不追人、没有死亡，全部原创造型。目前一种——**拖链者**：一个比墙还高、驼背的苍白巨物，细长下垂的头没有眼睛、下颌半张，反关节的腿，长到垂过膝盖的胳膊和长爪；穿着一身对它太小的旧衣服：褪色的暗红呢子外套（袖子只到肘弯、前襟敞着、下摆撕成条）、发黑的皮围裙、斜挎的皮挽具、膝盖撑破的土黄帆布裤、小臂和脚踝缠着脏绷带，挽具背后的铁环拴着链子，拖着一块锈铁板。每隔几分钟，你在屋外、又看得见远处的时候（街上两边的墙挡得死，多半要在墙头步道、观景台、屋顶上或者滑翔时），它会在你前方 45～75 米处横着走过一段，铁板拖地的声音从它那里传来；你走近到 28 米以内，它就淡进雾里。模型由 `tools/blender/creatures.py` 生成（`assets/models/creatures.glb`）：身体用蒙皮修改器长成一整块再细分、置换出起伏，衣服贴着身体，都绑在一副骨骼上；走路的动作在 `hauler.gd` 里按骨骼摆，皮肤和布料的斑驳、褶皱是材质上叠的噪声。
 - **飞桥**：三圈观景台各伸出一座 3 米宽的飞桥，水平越过下一层的墙头，离下面的街 12 米，桥下的墙压低一截，从街上抬头能看见桥悬在头顶。中间那圈的一座是通的：桥面尽头接三段一级级石块叠成的悬空楼梯，落到下层的街上（下面照样走人），是上下两层之间的一条近路；另外两座断在半空，只能走到断口往下看。小地图上是一道浅黄的细线，楼梯那段是橙色。
 - **广场高架桥**：每个 25 米见方的大广场上空，在墙顶步道的高度横架一座桥，把两边围墙顶的步道直接连起来，桥下照样是广场。桥中段一侧接一段悬空楼梯，石块一级级叠到广场地面，是从广场爬上步道网的第二条路。
 - **庭院与墙顶步道**：每层有两个 2×2 格子打通成的方形庭院（15 米见方），第 1、2 层再各有一个 3×3 格子的大广场（25 米见方），围墙统一 8 米高。院里贴着一面墙有两段楼梯，爬到一块和墙顶齐平的挑台，从挑台走上围墙顶。通进院子的路口上方架着桥面，围墙顶完整地绕院子一圈；同一层的庭院之间，沿着迷宫的墙把一串墙顶统一到 8 米，遇到通道就从上面跨过去（下面是两道拱的短隧道），连成一张墙顶步道网，两侧有齐膝的矮护墙。小地图上步道是浅黄色。
@@ -129,7 +131,7 @@ leviathan/
 ├── export_presets.cfg   三个平台的导出配置
 ├── main.tscn            主场景（只有一个根节点，内容全部由脚本生成）
 ├── assets/audio/        背景音乐
-├── assets/models/       建筑装饰件 trim_kit.glb、地标 landmarks.glb、房间道具 room_props.glb、小楼 houses.glb（由 tools/blender/ 下的脚本生成）
+├── assets/models/       建筑装饰件 trim_kit.glb、地标 landmarks.glb、房间道具 room_props.glb、小楼 houses.glb、迷宫里的东西 creatures.glb（由 tools/blender/ 下的脚本生成）
 ├── tools/blender/       Blender 建模脚本（Godot 忽略这个目录）
 ├── docs/screenshots/    README 用的截图（.gdignore，不进游戏包）
 ├── scripts/
@@ -153,6 +155,7 @@ leviathan/
 │   ├── rain.gd          雨丝和雨声
 │   ├── dust.gd          落下的灰烬、墙头掉落的碎屑
 │   ├── distant_sounds.gd 远处的动静：金属、铁链、门轴、钟楼的钟、低语
+│   ├── hauler.gd        拖链者：远处横穿过去的巨影
 │   ├── ash.gdshader     灰烬碎片：只被提灯和闪电照亮
 │   ├── settings.gd      画质与操作设置，读写 settings.cfg
 │   ├── menu.gd          Esc 菜单
@@ -217,6 +220,7 @@ leviathan/
 | 地面多久湿透、多久干透 | `rain.gd` → `WET_TIME` / `DRY_TIME` |
 | 被黑光吸走声音的快慢和程度 | `soundscape.gd` → `HUSH_*` |
 | 远处的动静多久一声、各自多响、钟楼多久敲一次 | `distant_sounds.gd` → `MIN_GAP` / `MAX_GAP` / `DB` / `BELL_MIN` / `BELL_MAX` |
+| 拖链者多久出现一次、出现在多远、多近就淡掉、多大 | `hauler.gd` → `GAP_MIN` / `GAP_MAX` / `DIST_MIN` / `DIST_MAX` / `FADE_NEAR` / `SCALE` |
 | 灰烬数量、风向和下落速度、碎屑多久掉一次 | `dust.gd` → `AMOUNT` / `WIND` / `GRIT_MIN` / `GRIT_MAX`；颜色、大片比例在 `ash.gdshader` |
 | 利维坦低鸣的音量和远近差别、混响探测的频率和范围 | `soundscape.gd` → `HUM_*` / `PROBE_*` |
 | 背景音乐被黑光压低的程度 | `main.gd` → `_process()` 里的 `0.75` |
