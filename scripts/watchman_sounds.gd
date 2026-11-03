@@ -1,15 +1,24 @@
 extends Node3D
-## 守夜人的声音（挂在守夜人身上，跟着它走；全部在代码里合成，开局在后台线程里合成好）：
-## - 脚步：一下闷响带一点碎石的沙沙声；
-## - 钥匙：左手那一大串钥匙，每走一步叮当几下——你往往先听见钥匙，后看见光；追你的时候每步都响、更响；
+## 守夜人的声音（挂在守夜人身上，跟着它走）：
+## - 脚步：石头地上的真实脚步录音（CC0，见 README），左右脚交替、每步随机挑一条、音高稍微变一点；
+## - 钥匙：左手那一大串钥匙，真实录音（CC0），每走一步晃一下——你往往先听见钥匙，后看见光；追你的时候每步都响、更响；
 ## - 火：提灯里那团火低低的呼呼声和偶尔的噼啪，离得很近才听得见；
 ## - 发现你：火猛地一窜（一声往上扫的呼），钥匙哗啦一抖；
 ## - 抓住你：钥匙在耳边哗啦作响、火声越来越大，最后一声闷响——这一声不走 World 总线，不会被“吸走”。
+## 火、发现你的那一窜、抓住你那一声是合成的（开局在后台线程里合成好）。
 ## 走 World 总线（跟着分区混响），抓住你那一声直接进 Master。
 
 const Synth = preload("res://scripts/synth.gd")
 const RATE := Synth.RATE
 const LANTERN_Y := 2.8           # 提灯离地多高
+const STEPS_L := [preload("res://assets/audio/watchman/step_stone_l1.ogg"), preload("res://assets/audio/watchman/step_stone_l2.ogg"),
+	preload("res://assets/audio/watchman/step_stone_l3.ogg")]
+const STEPS_R := [preload("res://assets/audio/watchman/step_stone_r1.ogg"), preload("res://assets/audio/watchman/step_stone_r2.ogg"),
+	preload("res://assets/audio/watchman/step_stone_r3.ogg")]
+const KEYS := [preload("res://assets/audio/watchman/keys_01.ogg"), preload("res://assets/audio/watchman/keys_02.ogg"),
+	preload("res://assets/audio/watchman/keys_03.ogg"), preload("res://assets/audio/watchman/keys_04.ogg"),
+	preload("res://assets/audio/watchman/keys_05.ogg"), preload("res://assets/audio/watchman/keys_06.ogg"),
+	preload("res://assets/audio/watchman/keys_07.ogg")]
 
 var lib := {}                    # 种类 → [AudioStreamWAV]
 var ready_lib := false
@@ -21,7 +30,9 @@ var keys: AudioStreamPlayer3D
 var flame: AudioStreamPlayer3D
 var sting: AudioStreamPlayer3D
 var close: AudioStreamPlayer      # 抓住你那一声：不定位、不走 World
+var close_keys: AudioStreamPlayer # 抓住你时耳边的钥匙声：同上
 var burning := false
+var left_foot := false
 
 
 func _ready() -> void:
@@ -37,6 +48,10 @@ func _ready() -> void:
 	close = AudioStreamPlayer.new()
 	close.bus = "Master"
 	add_child(close)
+	close_keys = AudioStreamPlayer.new()
+	close_keys.bus = "Master"
+	close_keys.max_polyphony = 3
+	add_child(close_keys)
 	worker = Thread.new()
 	worker.start(_build_library)
 
@@ -59,13 +74,12 @@ func _player(at: Vector3, unit: float, reach: float) -> AudioStreamPlayer3D:
 
 ## ---------- 守夜人调用 ----------
 
-## 落了一步：脚步声，钥匙叮当（追的时候每步都响、更响）
+## 落了一步：左右脚交替的脚步声，钥匙晃一下（追的时候每步都响、更响）
 func step(chasing: bool) -> void:
-	if not ready_lib:
-		return
-	_play(steps, "step", -6.0 if chasing else -10.0)
+	left_foot = not left_foot
+	_play(steps, STEPS_L if left_foot else STEPS_R, -5.0 if chasing else -10.0)
 	if chasing or rng.randf() < 0.7:
-		_play(keys, "keys", -4.0 if chasing else -9.0)
+		_play(keys, KEYS, -6.0 if chasing else -12.0)
 
 
 ## 出场 / 退下：火声开关
@@ -81,20 +95,28 @@ func burn(on: bool) -> void:
 		flame.stop()
 
 
+## 发现你：火一窜，钥匙哗啦一抖
 func alert() -> void:
+	_play(keys, KEYS, -3.0)
 	if ready_lib:
-		_play(sting, "alert", 0.0)
+		_play(sting, lib["alert"], 0.0)
 
 
+## 抓住你：钥匙在耳边越晃越响（0.9 秒里晃三下），火声越来越大，最后一声闷响
 func caught() -> void:
 	if ready_lib:
 		close.stream = lib["caught"][0]
 		close.volume_db = -4.0
 		close.play()
+	for i in 3:
+		get_tree().create_timer(i * 0.3).timeout.connect(func() -> void:
+			close_keys.stream = KEYS[rng.randi() % KEYS.size()]
+			close_keys.volume_db = -12.0 + i * 4.0
+			close_keys.pitch_scale = rng.randf_range(0.95, 1.05)
+			close_keys.play())
 
 
-func _play(p: AudioStreamPlayer3D, kind: String, db: float) -> void:
-	var list: Array = lib[kind]
+func _play(p: AudioStreamPlayer3D, list: Array, db: float) -> void:
 	p.stream = list[rng.randi() % list.size()]
 	p.volume_db = db + rng.randf_range(-1.5, 1.5)
 	p.pitch_scale = rng.randf_range(0.94, 1.06)
@@ -104,10 +126,7 @@ func _play(p: AudioStreamPlayer3D, kind: String, db: float) -> void:
 ## ---------- 合成 ----------
 
 func _build_library() -> void:
-	var out := {"step": [], "keys": [], "flame": [], "alert": [], "caught": []}
-	for i in 4:
-		out["step"].append(_step_wav())
-		out["keys"].append(Synth.wav(Synth.fade_out(_jingle(synth_rng.randf_range(0.18, 0.35), synth_rng.randi_range(3, 6), 0.8), 0.05)))
+	var out := {"flame": [], "alert": [], "caught": []}
 	out["flame"].append(_flame_wav())
 	out["alert"].append(_alert_wav())
 	out["caught"].append(_caught_wav())
@@ -119,44 +138,6 @@ func _library_done(out: Dictionary) -> void:
 	ready_lib = true
 	if burning:
 		burn(true)
-
-
-## 一下钥匙碰钥匙：几个不成谐波的高音分量，很快衰减
-func _clink(out: PackedFloat32Array, at: int, freq: float, amp: float) -> void:
-	var ratios := [1.0, 1.52, 2.31, 3.09]
-	var decay := synth_rng.randf_range(35.0, 60.0)
-	var n := mini(int(RATE * 0.18), out.size() - at)
-	for i in n:
-		var d := float(i) / RATE
-		var s := 0.0
-		for k in ratios.size():
-			s += sin(TAU * freq * ratios[k] * d) / (1.0 + k * 0.8)
-		out[at + i] += s * amp * exp(-d * decay)
-
-
-## 一串钥匙晃一下：dur 秒里 hits 下碰撞，前密后疏
-func _jingle(dur: float, hits: int, gain: float) -> PackedFloat32Array:
-	var out := PackedFloat32Array()
-	out.resize(int(RATE * (dur + 0.2)))
-	for h in hits:
-		var at := int(RATE * dur * pow(float(h) / hits, 1.4))
-		_clink(out, at, synth_rng.randf_range(2600.0, 5200.0), synth_rng.randf_range(0.4, 1.0) * gain * 0.3)
-	return out
-
-
-## 脚步：低频一下闷响 + 很短的一阵碎石沙沙
-func _step_wav() -> AudioStreamWAV:
-	var n := int(RATE * 0.3)
-	var out := PackedFloat32Array()
-	out.resize(n)
-	var f := synth_rng.randf_range(60.0, 85.0)
-	var st := [0.0, 0.0]
-	for i in n:
-		var t := float(i) / RATE
-		var thud := sin(TAU * f * t) * exp(-t * 28.0)
-		var grit := Synth.bandpass(synth_rng.randf_range(-1.0, 1.0), 1400.0, 1.2, st) * exp(-t * 45.0)
-		out[i] = (thud * 0.9 + grit * 0.6) * 0.6
-	return Synth.wav(Synth.fade_out(out, 0.05))
 
 
 ## 火：低低的呼呼声（低通噪声，慢慢起伏）加偶尔的噼啪；首尾交叉淡化，循环起来没有接缝
@@ -188,11 +169,11 @@ func _flame_wav() -> AudioStreamWAV:
 	return Synth.wav(Synth.normalize(out, 0.6), true)
 
 
-## 发现你：火猛地一窜——带通噪声从低往高扫、涨起来再落下；钥匙哗啦一抖
+## 发现你：火猛地一窜——带通噪声从低往高扫、涨起来再落下（钥匙那一抖用录音）
 func _alert_wav() -> AudioStreamWAV:
 	var dur := 1.6
 	var n := int(RATE * dur)
-	var out := _jingle(0.6, 14, 1.0)
+	var out := PackedFloat32Array()
 	out.resize(n)
 	var st := [0.0, 0.0]
 	for i in n:
@@ -203,11 +184,11 @@ func _alert_wav() -> AudioStreamWAV:
 	return Synth.wav(Synth.fade_out(Synth.normalize(out, 0.85), 0.3))
 
 
-## 抓住你：0.9 秒里钥匙在耳边越晃越响、火声越来越大，最后一声闷响（正好赶上画面黑下去）
+## 抓住你：0.9 秒里火声越来越大，最后一声闷响（正好赶上画面黑下去；钥匙声用录音另放）
 func _caught_wav() -> AudioStreamWAV:
 	var dur := 2.4
 	var n := int(RATE * dur)
-	var out := _jingle(0.85, 26, 1.3)
+	var out := PackedFloat32Array()
 	out.resize(n)
 	var st := [0.0, 0.0]
 	var thump := int(RATE * 0.9)
