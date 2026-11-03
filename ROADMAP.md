@@ -33,7 +33,7 @@
 
 - 房间道具换成 Blender 模型（`tools/blender/room_props.py`），分三批：
   - [x] 第一批：铁床、摇椅、婴儿床、轮椅、瓷娃娃、人台
-  - [ ] 第二批（医疗类）：手术台、推床、输液架、推车、洗手池、浴缸、铁皮柜、柜子
+  - [x] 第二批（医疗类）：手术台、推床、输液架、推车、洗手池、浴缸、铁皮柜、柜子
   - [ ] 第三批：落地钟、挂钟、椅子、桌子、长餐桌、棺材、祭台、笼子、蜡烛等
 - 待定：带拱廊的小楼、PBR 材质
 
@@ -81,7 +81,7 @@
 
 - [x] 程序化的拱门、盲拱窗（`arch_mesh.gd`），旧灰泥 / 土坯墙面和土地面（`wall.gdshader`）
 - [x] Blender 装饰件（`tools/blender/trim_kit.py` → `assets/models/trim_kit.glb`）：墙顶压檐、墙脚基座、转角壁柱和柱头、拱门拱石圈，叠在现有墙体上
-- [x] 房间道具第一批改用 Blender 模型（`tools/blender/room_props.py` → `assets/models/room_props.glb`）
+- [x] 房间道具第一、二批改用 Blender 模型（`tools/blender/room_props.py` → `assets/models/room_props.glb`）
 - [ ] 在 Blender 里按 5 米网格建模块：直墙、转角、T 字、拱门、柱廊、壁龛、楼梯段、桥段
 - [x] 迷宫里的地标：钟楼、望楼、尖塔立在墙角，门楼横跨长直街（`tools/blender/landmarks.py` → `assets/models/landmarks.glb`）
 - [ ] 带拱廊的小楼等更多建筑

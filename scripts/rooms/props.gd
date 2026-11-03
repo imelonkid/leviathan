@@ -1,6 +1,6 @@
 extends RefCounted
-## 实体库：房间里能摆的东西。一部分是 Blender 脚本建的模型（tools/blender/room_props.py → room_props.glb），
-## 其余的还是用方块和圆柱拼出来的小模型。
+## 实体库：房间里能摆的东西。床、摇椅、婴儿床、轮椅、娃娃、人台和医疗类的几件是 Blender 脚本建的模型
+## （tools/blender/room_props.py → room_props.glb），其余的还是用方块和圆柱拼出来的小模型。
 ## 每个实体登记在 ENTITIES 里：放哪（place）、占地多大（foot：宽 × 深，米）、带什么气质（tags）。
 ## 房间配方（recipes.gd）按气质给权重挑实体，room.gd 负责摆放；这里只管“一件东西长什么样”。
 ##
@@ -93,8 +93,8 @@ func make(id: String) -> Node3D:
 	return n
 
 
-## 摆一件 Blender 建的模型：材质槽按名字套 m 里的材质，frame 槽给传进来的那份（铁或锈）
-func model(name: String, parent: Node3D, frame: Material = null, xf := Transform3D.IDENTITY) -> MeshInstance3D:
+## 摆一件 Blender 建的模型：材质槽按名字套 m 里的材质；over 里给了的槽换成指定的（比如 frame 给铁或锈）
+func model(name: String, parent: Node3D, over := {}, xf := Transform3D.IDENTITY) -> MeshInstance3D:
 	if models.is_empty():
 		var scene: Node = PropModels.instantiate()
 		for c in scene.find_children("*", "MeshInstance3D", true, false):
@@ -105,7 +105,7 @@ func model(name: String, parent: Node3D, frame: Material = null, xf := Transform
 	for i in mesh.get_surface_count():
 		var src := mesh.surface_get_material(i)
 		var key := src.resource_name if src else "cloth"
-		mi.set_surface_override_material(i, frame if key == "frame" and frame else m.get(key, m["cloth"]))
+		mi.set_surface_override_material(i, over.get(key, m.get(key, m["cloth"])))
 	return mi
 
 
@@ -149,7 +149,7 @@ func solid(n: Node3D, sz: Vector3, center: Vector3) -> void:
 
 ## 铁床：床头（-z）顶着墙，弯管床头床尾；有的没床垫，不安的床垫上有血
 func _bed(n: Node3D) -> void:
-	model("bed_frame", n, _metal())
+	model("bed_frame", n, {"frame": _metal()})
 	if rng.randf() < 0.8:
 		model("bed_mattress", n)
 		if rng.randf() < dread:
@@ -161,17 +161,16 @@ func _bed(n: Node3D) -> void:
 	solid(n, Vector3(0.9, 0.7, 2.0), Vector3(0, 0.35, 0))
 
 
-## 柜子：两扇门，不安的时候一扇半开，里面黑洞洞的
+## 柜子：顶冠、踢脚、两扇嵌板门；不安的时候一扇半开，里面黑洞洞的
 func _cabinet(n: Node3D) -> void:
 	var wood: Material = m["dark_wood"] if rng.randf() < 0.5 else m["wood"]
-	room.box(Vector3(1.0, 1.9, 0.5), Vector3(0, 0.95, 0), wood, false, Basis.IDENTITY, n)
+	model("cabinet", n, {"wood": wood})
 	var ajar := rng.randf() < dread * 0.7
 	for side: float in [-1.0, 1.0]:
 		var door := Node3D.new()
 		door.position = Vector3(side * 0.5, 0, 0.255)
 		n.add_child(door)
-		room.box(Vector3(0.48, 1.8, 0.03), Vector3(-side * 0.25, 1.0, 0), wood, false, Basis.IDENTITY, door)
-		room.box(Vector3(0.03, 0.15, 0.04), Vector3(-side * 0.44, 1.0, 0.03), m["brass"], false, Basis.IDENTITY, door)
+		model("cabinet_door_r" if side > 0.0 else "cabinet_door_l", door, {"wood": wood})
 		if ajar and side > 0.0:
 			door.rotation.y = deg_to_rad(-55.0)
 			room.box(Vector3(0.46, 1.78, 0.02), Vector3(0.25, 1.0, 0.24), m["black"], false, Basis.IDENTITY, n)
@@ -204,15 +203,10 @@ func _shelf(n: Node3D) -> void:
 	solid(n, Vector3(1.4, 2.0, 0.4), Vector3(0, 1.0, 0))
 
 
-## 铸铁浴缸：四只脚；不安的里面是一缸暗红
+## 爪脚浴缸：卷边的铸铁缸、四只铜爪脚；不安的里面是一缸暗红
 func _bathtub(n: Node3D) -> void:
-	var porcelain: Material = m["porcelain"]
-	room.box(Vector3(0.8, 0.55, 1.7), Vector3(0, 0.42, 0), porcelain, false, Basis.IDENTITY, n)
-	var inside: Material = m["gore"] if rng.randf() < dread * 0.8 else m["black"]
-	room.box(Vector3(0.66, 0.02, 1.56), Vector3(0, 0.64, 0), inside, false, Basis.IDENTITY, n)
-	for sx: float in [-0.32, 0.32]:
-		for sz: float in [-0.7, 0.7]:
-			room.box(Vector3(0.08, 0.15, 0.08), Vector3(sx, 0.075, sz), m["brass"], false, Basis.IDENTITY, n)
+	model("bathtub", n)
+	model("bathtub_fill", n, {"black": m["gore"] if rng.randf() < dread * 0.8 else m["black"]})
 	if rng.randf() < dread:
 		blood(n, Vector3(0.45, 0.003, rng.randf_range(-0.4, 0.4)), 0.9)
 	solid(n, Vector3(0.8, 0.7, 1.7), Vector3(0, 0.35, 0))
@@ -220,14 +214,9 @@ func _bathtub(n: Node3D) -> void:
 
 # ---------- 地上的 ----------
 
-## 手术推车：两层托盘，上层摆着器械
+## 手术推车：两层带边的托盘、一头推把，上层摆着器械
 func _cart(n: Node3D) -> void:
-	var frame := _metal()
-	for sx: float in [-0.27, 0.27]:
-		for sz: float in [-0.42, 0.42]:
-			room.box(Vector3(0.03, 0.9, 0.03), Vector3(sx, 0.45, sz), frame, false, Basis.IDENTITY, n)
-	for y: float in [0.3, 0.88]:
-		room.box(Vector3(0.6, 0.02, 0.9), Vector3(0, y, 0), m["steel"], false, Basis.IDENTITY, n)
+	model("cart", n, {"frame": _metal()})
 	for i in rng.randi_range(3, 7):
 		var l := rng.randf_range(0.12, 0.25)
 		room.box(Vector3(0.015, 0.01, l), Vector3(rng.randf_range(-0.22, 0.22), 0.9, rng.randf_range(-0.3, 0.3)),
@@ -348,15 +337,13 @@ func _doll(n: Node3D) -> void:
 
 # ---------- 屋子正中 ----------
 
-## 手术台：底座 + 台面 + 头枕，台上台下都是血
+## 手术台：立柱底座、三段皮垫台面、头枕，台上台下都是血
 func _optable(n: Node3D) -> void:
-	room.box(Vector3(0.35, 0.75, 0.6), Vector3(0, 0.375, 0), m["steel"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.75, 0.08, 2.0), Vector3(0, 0.8, 0), m["steel"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.4, 0.1, 0.3), Vector3(0, 0.89, -0.85), m["cloth"], false, Basis.IDENTITY, n)
+	model("optable", n)
 	for z: float in [-0.4, 0.2, 0.7]:
 		room.box(Vector3(0.8, 0.02, 0.07), Vector3(0, 0.85, z), m["black"], false, Basis.IDENTITY, n)
 	if dread > 0.3:
-		blood(n, Vector3(0, 0.842, rng.randf_range(-0.3, 0.3)), 0.8)
+		blood(n, Vector3(0, 0.846, rng.randf_range(-0.3, 0.3)), 0.8)
 		blood(n, Vector3(rng.randf_range(-0.4, 0.4), 0.004, rng.randf_range(-0.6, 0.6)), 1.6)
 	solid(n, Vector3(0.75, 0.85, 2.0), Vector3(0, 0.42, 0))
 
@@ -562,47 +549,24 @@ func _sheet(n: Node3D) -> void:
 
 ## 轮椅：辐条大轮、帆布座；进门时可能自己滑开
 func _wheelchair(n: Node3D) -> void:
-	model("wheelchair", n, _metal())
+	model("wheelchair", n, {"frame": _metal()})
 	if rng.randf() < dread:
 		blood(n, Vector3(0, 0.49, 0.05), 0.35)
 	solid(n, Vector3(0.65, 1.0, 0.9), Vector3(0, 0.5, 0))
 	room.drifters.append(n)
 
 
-## 输液架：细杆、三脚底座、顶上挂着一袋——不安的袋子里是血
+## 输液架：五脚带轮的底座、顶上弯钩挂着一袋——不安的袋子里是血
 func _iv_stand(n: Node3D) -> void:
-	var frame: Material = m["steel"]
-	room.box(Vector3(0.025, 1.9, 0.025), Vector3(0, 0.95, 0), frame, false, Basis.IDENTITY, n)
-	for i in 3:
-		room.box(Vector3(0.025, 0.025, 0.3), Vector3(0, 0.03, 0), frame, false, Basis(Vector3.UP, TAU * i / 3.0), n)
-	room.box(Vector3(0.3, 0.02, 0.02), Vector3(0, 1.88, 0), frame, false, Basis.IDENTITY, n)
-	var bag: Material = m["gore"] if rng.randf() < dread else m["glass"]
-	room.box(Vector3(0.14, 0.22, 0.05), Vector3(0.12, 1.72, 0), bag, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.006, 0.9, 0.006), Vector3(0.12, 1.15, 0), bag, false, Basis(Vector3.BACK, 0.15), n)
+	model("iv_stand", n)
+	model("iv_bag", n, {"glass": m["gore"] if rng.randf() < dread else m["glass"]})
 
 
 ## 停尸推床：带轮的窄床，多半盖着一张白布，布下面有个人形
 func _gurney(n: Node3D) -> void:
-	var frame := _metal()
-	for sx: float in [-0.32, 0.32]:
-		for sz: float in [-0.9, 0.9]:
-			room.box(Vector3(0.03, 0.75, 0.03), Vector3(sx, 0.4, sz), frame, false, Basis.IDENTITY, n)
-			var w := SphereMesh.new()
-			w.radius = 0.05
-			w.height = 0.1
-			room.mesh_at(w, Transform3D(Basis.IDENTITY, Vector3(sx, 0.05, sz)), m["black"], n)
-	room.box(Vector3(0.7, 0.04, 2.0), Vector3(0, 0.78, 0), m["steel"], false, Basis.IDENTITY, n)
+	model("gurney", n, {"frame": _metal()})
 	if rng.randf() < 0.4 + dread * 0.5:
-		# 白布下面：头、躯干、两条腿的轮廓
-		var cloth: Material = m["sheet"]
-		var head := SphereMesh.new()
-		head.radius = 0.13
-		head.height = 0.22
-		room.mesh_at(head, Transform3D(Basis.IDENTITY, Vector3(0, 0.88, -0.78)), cloth, n)
-		room.box(Vector3(0.45, 0.2, 0.75), Vector3(0, 0.9, -0.2), cloth, false, Basis.IDENTITY, n)
-		for sx: float in [-0.1, 0.1]:
-			room.box(Vector3(0.17, 0.13, 0.8), Vector3(sx, 0.86, 0.55), cloth, false, Basis.IDENTITY, n)
-		room.box(Vector3(0.72, 0.02, 1.95), Vector3(0, 0.81, 0), cloth, false, Basis.IDENTITY, n)
+		model("gurney_sheet", n, {"cloth": m["sheet"]})
 		if rng.randf() < dread:
 			blood(n, Vector3(rng.randf_range(-0.1, 0.1), 1.005, -0.25), 0.4)
 	solid(n, Vector3(0.7, 0.85, 2.0), Vector3(0, 0.42, 0))
@@ -649,14 +613,10 @@ func _mannequin(n: Node3D) -> void:
 	room.watchers.append(body)
 
 
-## 洗手池：立柱、台盆、水龙头；不安的盆里积着血
+## 洗手池：车削立柱、圆角台盆、十字把手和鹅颈龙头；不安的盆里积着血
 func _sink(n: Node3D) -> void:
-	room.box(Vector3(0.2, 0.75, 0.2), Vector3(0, 0.375, -0.05), m["porcelain"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.6, 0.15, 0.45), Vector3(0, 0.82, 0), m["porcelain"], false, Basis.IDENTITY, n)
-	var inside: Material = m["gore"] if rng.randf() < dread else m["black"]
-	room.box(Vector3(0.46, 0.01, 0.3), Vector3(0, 0.9, 0.03), inside, false, Basis.IDENTITY, n)
-	room.box(Vector3(0.03, 0.15, 0.03), Vector3(0, 0.97, -0.18), m["steel"], false, Basis.IDENTITY, n)
-	room.box(Vector3(0.03, 0.03, 0.12), Vector3(0, 1.04, -0.13), m["steel"], false, Basis.IDENTITY, n)
+	model("sink", n)
+	model("sink_fill", n, {"black": m["gore"] if rng.randf() < dread else m["black"]})
 	solid(n, Vector3(0.6, 0.9, 0.5), Vector3(0, 0.45, 0))
 
 
@@ -704,23 +664,20 @@ func mat_bone() -> Material:
 	return room.mat(Color(0.55, 0.5, 0.4), 0.8)
 
 
-## 一排铁皮柜：三格，门上有通风缝，有一格开着，里面漆黑
+## 一排铁皮柜：三格，门上有百叶缝，有一格开着，里面漆黑
 func _lockers(n: Node3D) -> void:
 	var metal: Material = room.mat(Color(0.28, 0.3, 0.28), 0.5, 0.6) if rng.randf() < 0.6 else _metal()
 	var open := rng.randi_range(0, 2) if rng.randf() < 0.3 + dread * 0.5 else -1
+	model("lockers_body", n, {"frame": metal})
 	for i in 3:
 		var x := -0.46 + i * 0.46
-		room.box(Vector3(0.44, 1.9, 0.48), Vector3(x, 0.95, 0), metal, false, Basis.IDENTITY, n)
+		var door := Node3D.new()
+		door.position = Vector3(x + 0.21, 0, 0.25)
+		n.add_child(door)
+		model("locker_door", door, {"frame": metal})
 		if i == open:
 			room.box(Vector3(0.4, 1.84, 0.02), Vector3(x, 0.95, 0.235), m["black"], false, Basis.IDENTITY, n)
-			var door := Node3D.new()
-			door.position = Vector3(x + 0.21, 0, 0.25)
 			door.rotation.y = deg_to_rad(rng.randf_range(-100.0, -40.0))
-			n.add_child(door)
-			room.box(Vector3(0.42, 1.86, 0.02), Vector3(-0.21, 0.95, 0), metal, false, Basis.IDENTITY, door)
-		else:
-			for k in 4:
-				room.box(Vector3(0.25, 0.012, 0.01), Vector3(x, 1.6 + k * 0.05, 0.245), m["black"], false, Basis.IDENTITY, n)
 	solid(n, Vector3(1.4, 1.9, 0.5), Vector3(0, 0.95, 0))
 
 
