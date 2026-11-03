@@ -91,6 +91,13 @@ class Minimap extends Control:
 				if gen.walkway[z][x]:
 					color = Color(0.85, 0.78, 0.55, 0.95)   # 墙顶步道（含跨过通道的桥面）
 				draw_rect(Rect2(x * cell, z * cell, cell, cell), color)
+		# 地标：塔楼和门楼画成亮白的小方块，方便认路
+		for t: Dictionary in gen.towers:
+			var b: Vector2i = t["block"]
+			draw_rect(Rect2(Vector2(b) * cell - Vector2(cell, cell) * 0.5, Vector2(cell, cell) * 2.0), Color(0.95, 0.92, 0.85))
+		for g: Dictionary in gen.gatehouses:
+			var b: Vector2i = g["block"]
+			draw_rect(Rect2(Vector2(b) * cell - Vector2(cell, cell) * 0.5, Vector2(cell, cell) * 2.0), Color(0.85, 0.8, 0.95))
 		# 房间：暗红色的方块
 		for room: Dictionary in gen.rooms:
 			var r: Rect2i = room["rect"]
