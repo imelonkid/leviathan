@@ -36,6 +36,7 @@ var hush_hi := 0.0               # 平滑过的：高频被吸走了多少（回
 var hum: AudioStreamPlayer3D
 var probe_t := 0.0
 var indoor := false              # 镜头在某间房里（rain.gd 也读它）
+var openness := 0.5              # 周围有多开阔 0（屋里、头顶有遮挡、窄巷）～ 1（观景台），dust.gd 读它
 var target := {"room": 0.6, "damp": 0.4, "wet": 0.25, "pre": 20.0}
 
 
@@ -129,6 +130,7 @@ func _probe() -> void:
 			if r.get("inside"):
 				indoor = true
 	if indoor:
+		openness = 0.0
 		target = {"room": 0.3, "damp": 0.7, "wet": 0.3, "pre": 4.0}
 		return
 	var space := player.get_world_3d().direct_space_state
@@ -140,9 +142,11 @@ func _probe() -> void:
 		total += _ray(space, origin, Vector3(cos(a), 0.0, sin(a)), PROBE_RANGE, ex)
 	var up := _ray(space, origin, Vector3.UP, 12.0, ex)
 	if up < 10.0:
+		openness = 0.0
 		target = {"room": 0.4, "damp": 0.5, "wet": 0.35, "pre": 8.0}
 		return
 	var o := clampf((total / 8.0 - 3.0) / 30.0, 0.0, 1.0)
+	openness = o
 	target = {"room": lerpf(0.45, 0.9, o), "damp": lerpf(0.25, 0.5, o),
 		"wet": lerpf(0.32, 0.12, o), "pre": lerpf(15.0, 60.0, o)}
 
