@@ -151,6 +151,11 @@ func get_spawn_position() -> Vector3:
 	return _block_to_world(b.x, b.y) + Vector3(0, gen.floor_height(b.x, b.y) + 0.2, 0)
 
 
+## 块中心的世界坐标（y = 0），怪物找路用
+func block_center(x: int, z: int) -> Vector3:
+	return _block_to_world(x, z)
+
+
 func _block_to_world(x: int, z: int) -> Vector3:
 	var half := n / 2.0
 	return Vector3((x - half + 0.5) * block, 0.0, (z - half + 0.5) * block)
