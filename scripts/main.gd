@@ -19,6 +19,7 @@ const Hauler = preload("res://scripts/hauler.gd")
 const Watchman = preload("res://scripts/watchman.gd")
 const Caught = preload("res://scripts/caught.gd")
 const CreatureBudget = preload("res://scripts/creature_budget.gd")
+const ThresholdCreature = preload("res://scripts/threshold_creature.gd")
 const MUSIC = preload("res://assets/audio/liweitan.mp3")   # 背景音乐，导入设置里已开循环
 
 const LEVIATHAN_HEIGHT := 250.0  # 中心高度；本体高 340 米，下尖离顶层广场约 40 米
@@ -115,6 +116,18 @@ func _ready() -> void:
 	watchman.maze = maze
 	watchman.budget = budget
 	add_child(watchman)
+
+	for kind in ["surveyor", "door_holder"]:
+		var creature := ThresholdCreature.new()
+		creature.name = "Surveyors" if kind == "surveyor" else "DoorHolder"
+		creature.kind = kind
+		creature.player = player
+		creature.maze = maze
+		creature.budget = budget
+		creature.watchman = watchman
+		creature.distant = distant
+		creature.soundscape = soundscape
+		add_child(creature)
 
 	var storm := Storm.new()
 	storm.name = "Storm"
