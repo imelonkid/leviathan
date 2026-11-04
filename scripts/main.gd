@@ -125,7 +125,6 @@ func _ready() -> void:
 		creature.maze = maze
 		creature.budget = budget
 		creature.watchman = watchman
-		creature.distant = distant
 		creature.soundscape = soundscape
 		add_child(creature)
 
@@ -174,13 +173,14 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 
-## 镜头被黑光扫中：画面压黑、声音压迫，音乐也被压下去，周围的声音被吸走；被守夜人抓住时也一样
+## 黑光改变听感但音乐不停；守夜人抓住时单独处理失声和音乐压低
 func _process(_delta: float) -> void:
 	var e: float = lev.beam_exposure(player.cam.global_position)
 	beam_fx.intensity = maxf(e, caught.blur)
 	drone.pressure = e
-	soundscape.hush = maxf(e, caught.hush)
-	music.volume_db = linear_to_db(1.0 - beam_fx.level * 0.75)
+	soundscape.beam = e
+	soundscape.hush = caught.hush
+	music.volume_db = linear_to_db(1.0 - caught.blur * 0.75)
 
 
 ## 背景音乐走自己的 Music 总线，音量在 Esc 菜单里调
