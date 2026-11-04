@@ -181,6 +181,11 @@ func run() -> void:
 		check(creature not in creature.budget.holders, "Budget slot leaked")
 	await process_frame
 	print("threshold creatures: ", "PASS" if failures == 0 else "FAIL", " (", failures, " failures)")
+	for audio_type in ["AudioStreamPlayer", "AudioStreamPlayer3D"]:
+		for audio: Node in main.find_children("*", audio_type, true, false):
+			audio.stop()
+	main.drone.playback = null
+	await create_timer(0.25).timeout
 	main.queue_free()
 	await process_frame
 	quit(0 if failures == 0 else 1)

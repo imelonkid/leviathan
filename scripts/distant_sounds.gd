@@ -5,7 +5,7 @@ extends Node
 ## - 门轴：附近某扇门慢慢吱呀一声，只在小楼和房间附近；
 ## - 低语：最少见。在不安的屋子里、或刚被黑光扫过之后，从背后传来几秒听不出字的气声；
 ## - 钟楼的钟：迷宫里的钟楼每隔几分钟真的敲几下，声音从那座钟楼传来，可以拿来认方向。
-## 两声之间至少隔 MIN_GAP 秒；被黑光吸走声音时不放；大雨盖住一部分远处的声音；在屋里远处的声音发闷。
+## 两声之间至少隔 MIN_GAP 秒；被守夜人抓住失声时不放；大雨盖住一部分远处的声音；在屋里远处的声音发闷。
 ## 声音全部在代码里合成（开局在后台线程里合成，不卡画面），走 World 总线（跟着分区混响和“吸走”）。
 
 const Synth = preload("res://scripts/synth.gd")
@@ -83,7 +83,7 @@ func _process(delta: float) -> void:
 	if cam == null:
 		return
 	var hush: float = soundscape.hush if soundscape else 0.0
-	since_hush = 0.0 if hush > 0.3 else since_hush + delta
+	since_hush = 0.0 if maxf(hush, soundscape.beam if soundscape else 0.0) > 0.3 else since_hush + delta
 	if hush > 0.2:
 		return
 	for i in range(tolls.size() - 1, -1, -1):

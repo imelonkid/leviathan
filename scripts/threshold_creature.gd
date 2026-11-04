@@ -1,5 +1,6 @@
 extends Node3D
 ## 量墙人和扶门者：只做氛围，无碰撞。按名额加载，换迷宫即取消当前相遇。
+const Sounds = preload("res://scripts/threshold_sounds.gd")
 const Materials = preload("res://scripts/creature_materials.gd")
 const Budget = preload("res://scripts/creature_budget.gd")
 const Gen = preload("res://scripts/maze_gen.gd")
@@ -11,7 +12,6 @@ var player: Node3D
 var maze: Node3D
 var budget: Node
 var watchman: Node
-var distant: Node
 var soundscape: Node
 var model: Node3D
 var actors: Array[Node3D] = []
@@ -29,13 +29,16 @@ var direction := Vector3.ZERO
 var distance := 0.0
 var last_gen: RefCounted
 var probe_t := 0.0
-var sound_t := 0.0
+var sounds: Node
 var used_rooms := {}
 var exit_pos := Vector3.ZERO
 var release_t := 0.0
 
 
 func _ready() -> void:
+	sounds = Sounds.new()
+	sounds.kind = kind
+	add_child(sounds)
 	rng.randomize()
 	next_t = rng.randf_range(45, 75) if kind == "surveyor" else rng.randf_range(25, 45)
 	visible = false
@@ -242,12 +245,12 @@ func _begin() -> void:
 	retreat = false
 	elapsed = 0.0
 	release_t = 0.0
-	sound_t = 4.65 if kind == "surveyor" else 2.0
 	visible = true
 	idle = 0.0
 	global_position = start_pos
 	rotation.y = atan2(direction.x, direction.z)
 	_set_alpha(0.0)
+	sounds.begin(start_pos)
 	_pose()
 
 
@@ -281,10 +284,10 @@ func _tick(delta: float) -> void:
 			if release_t > 5.0:
 				_set_alpha(clampf(1.0 - (release_t - 5.0), 0.0, 1.0))
 	_pose()
-	sound_t -= delta
-	if sound_t <= 0 and distant != null and distant.ready_lib and (soundscape == null or soundscape.hush < 0.2):
-		distant._play("chain" if kind == "surveyor" else "creak", global_position + Vector3.UP * 1.8, 8.0)
-		sound_t = 6.0 if kind == "surveyor" else 20.0
+	if kind == "surveyor":
+		sounds.survey_tick(elapsed, actors)
+	else:
+		sounds.holder_tick(elapsed, release_t, global_position)
 	if retreat and alpha <= 0:
 		finish()
 
@@ -346,6 +349,7 @@ func _turn(sk: Skeleton3D, bone: String, world_axis: Vector3, angle: float) -> v
 
 
 func finish() -> void:
+	sounds.stop()
 	active = false
 	visible = false
 	retreat = false

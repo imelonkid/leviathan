@@ -3,9 +3,8 @@ extends Node
 ## 雨（rain.gd）、房间里的声音也走 World 总线。混响按周围有多开阔实时调整：
 ## 每 0.2 秒从镜头朝八个方向和头顶各打一条射线——窄走道回声短而亮，庭院大一些，
 ## 高处开阔的观景台几乎没有回声但远处的墙晚一点才回来，头顶有遮挡（门洞、隧道）和屋里小而闷。
-## 被黑光扫中时（main 设置 hush），World 总线上的声音被“吸走”：半秒内一道低通收窄、音量压下去、混响抽干，
-## 只剩很轻的耳鸣和自己的呼吸；扫过去以后音量先回来，高频再慢慢回来，像耳朵重新打开。
-## 声音全部在代码里合成，不用素材文件。
+## 黑光：Music / World / Ambience 继续播放，共同经过 Hearing 总线的低通，离开后快速恢复。
+## 被守夜人抓住时仍保留 World 的失声和耳鸣；这与黑光的堵耳效果分开。
 
 const Synth = preload("res://scripts/synth.gd")
 const RATE := Synth.RATE
@@ -13,8 +12,12 @@ const PROBE_EVERY := 0.2
 const PROBE_RANGE := 40.0
 const HUM_UNIT := 140.0          # 利维坦低鸣的衰减尺度（米）：越大，远近差别越小
 const HUM_DB := -8.0
+const BEAM_IN := 0.12           # 黑光堵耳进入时间
+const BEAM_OUT := 0.25          # 黑光离开后快速恢复，不跟随画面余效
+const BEAM_CUTOFF := 850.0      # 保留低频和旋律，压掉高频细节
+const BEAM_DB := -2.0           # 轻微衰减，不抽空环境和音乐
 const HUSH_IN := 0.5             # 被吸走用多久（秒）
-const HUSH_VOL_OUT := 1.5        # 扫过去以后音量多久回来
+const HUSH_VOL_OUT := 1.5        # 守夜人抓住后醒来，环境音量恢复时间
 const HUSH_LP_OUT := 3.5         # 高频多久回来（比音量慢）
 const HUSH_DB := -30.0           # 吸到最空时 World 总线压低多少
 const HUSH_CUTOFF := 220.0       # 吸到最空时低通截止频率（赫兹）
@@ -31,10 +34,15 @@ var hush_lp: AudioEffectLowPassFilter
 var hush_amp: AudioEffectAmplify
 var ring: AudioStreamPlayer
 var breath: AudioStreamPlayer
-var hush := 0.0                  # 被黑光照到的程度 0～1，main 每帧设置
+var beam := 0.0                 # 黑光实际曝光强度，独立于画面缓动
+var beam_level := 0.0
+var beam_lp: AudioEffectLowPassFilter
+var beam_amp: AudioEffectAmplify
+var hush := 0.0                  # 被守夜人抓住的程度 0～1，main 每帧设置
 var hush_vol := 0.0              # 平滑过的：音量被压了多少
 var hush_hi := 0.0               # 平滑过的：高频被吸走了多少（回来得比音量慢）
 var hum: AudioStreamPlayer3D
+var wet_level := 0.25
 var probe_t := 0.0
 var indoor := false              # 镜头在某间房里（rain.gd 也读它）
 var openness := 0.5              # 周围有多开阔 0（屋里、头顶有遮挡、窄巷）～ 1（观景台），dust.gd 读它
@@ -43,6 +51,19 @@ var target := {"room": 0.6, "damp": 0.4, "wet": 0.25, "pre": 20.0}
 
 
 func _ready() -> void:
+	# AudioServer 总线只能发送到自己左侧，先把 Hearing 插在 Master 后面。
+	AudioServer.add_bus(1)
+	AudioServer.set_bus_name(1, "Hearing")
+	AudioServer.set_bus_send(1, "Master")
+	beam_lp = AudioEffectLowPassFilter.new()
+	beam_lp.cutoff_hz = 20000.0
+	beam_lp.db = AudioEffectFilter.FILTER_24DB
+	AudioServer.add_bus_effect(1, beam_lp)
+	AudioServer.set_bus_effect_enabled(1, 0, false)
+	beam_amp = AudioEffectAmplify.new()
+	AudioServer.add_bus_effect(1, beam_amp)
+	for bus_name in ["Music", "Ambience"]:
+		AudioServer.set_bus_send(AudioServer.get_bus_index(bus_name), "Hearing")
 	world_bus = AudioServer.get_bus_index("World")
 	if world_bus < 0:
 		AudioServer.add_bus()
@@ -57,6 +78,7 @@ func _ready() -> void:
 		r.hipass = 0.15
 		r.predelay_msec = 20.0
 		AudioServer.add_bus_effect(world_bus, r)
+	AudioServer.set_bus_send(world_bus, "Hearing")
 	reverb = AudioServer.get_bus_effect(world_bus, 0) as AudioEffectReverb
 	hush_lp = AudioEffectLowPassFilter.new()
 	hush_lp.cutoff_hz = 20000.0
@@ -89,18 +111,22 @@ func _process(delta: float) -> void:
 	var k := minf(delta * 1.5, 1.0)
 	reverb.room_size = lerpf(reverb.room_size, target["room"], k)
 	reverb.damping = lerpf(reverb.damping, target["damp"], k)
-	reverb.wet = lerpf(reverb.wet, target["wet"], k)
+	wet_level = lerpf(wet_level, target["wet"], k)
 	reverb.predelay_msec = lerpf(reverb.predelay_msec, target["pre"], k)
 	_hush(delta)
 
 
-## 黑光吸走声音：进去快，出来时音量先回、高频后回
+## 黑光只改听感；守夜人抓住时才压空 World，并加入耳鸣和呼吸
 func _hush(delta: float) -> void:
+	beam_level = move_toward(beam_level, beam, delta / (BEAM_IN if beam > beam_level else BEAM_OUT))
+	beam_lp.cutoff_hz = 20000.0 * pow(BEAM_CUTOFF / 20000.0, beam_level)
+	beam_amp.volume_db = BEAM_DB * beam_level
+	AudioServer.set_bus_effect_enabled(AudioServer.get_bus_index("Hearing"), 0, beam_level > 0.0)
 	hush_vol = move_toward(hush_vol, hush, delta / (HUSH_IN if hush > hush_vol else HUSH_VOL_OUT))
 	hush_hi = move_toward(hush_hi, hush, delta / (HUSH_IN if hush > hush_hi else HUSH_LP_OUT))
 	hush_lp.cutoff_hz = 20000.0 * pow(HUSH_CUTOFF / 20000.0, hush_hi)
 	hush_amp.volume_db = HUSH_DB * hush_vol
-	reverb.wet *= 1.0 - hush_vol
+	reverb.wet = wet_level * (1.0 - hush_vol)
 	var quiet := hush_vol * hush_vol
 	for p: AudioStreamPlayer in [ring, breath]:
 		var db := (RING_DB if p == ring else BREATH_DB) + linear_to_db(maxf(quiet, 0.0001))
