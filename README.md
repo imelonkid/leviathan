@@ -108,6 +108,10 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 
 The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), puddle reflections (screen-space, on by default only on High), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, the Leviathan's hum, sounds in the rooms), and a photo mode that unlocks free flight through walls.
 
+The frame limit defaults to **60 FPS**, including existing configurations without this setting. Choose 30 / 60 / 120 / Unlimited in the menu; when the app loses focus it uses 15 FPS and restores your choice on return. V-Sync can impose a lower limit. These limits reduce unnecessary rendering; hardware heat and fan noise still depend on graphics settings and the machine.
+
+Atmospheric encounters check for a visible wall-top route every second, or an eligible large-room doorway every half-second, after their initial delay. The surveyors can also appear when viewed from above; the door holder can use either side of a door and only counts as encountered after being visible for a second. F3 shows why each is waiting. Encounters still depend on the route, visibility, and the shared two-model budget.
+
 ## 🛠️ Run from source
 
 1. Install [Godot 4.6](https://godotengine.org/download) (standard build, no .NET needed).

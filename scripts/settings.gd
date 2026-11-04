@@ -21,6 +21,11 @@ const PRESETS := {
 	},
 }
 
+const FRAME_LIMITS := [30, 60, 120, 0]
+const BACKGROUND_FPS := 15
+
+var has_focus := true
+
 var values := {
 	"preset": "high",
 	"volumetric_fog": true,
@@ -32,6 +37,7 @@ var values := {
 	"clouds": 2,                 # 乌云质量：0 低（半分辨率、少步进、没有云环）/ 1 中 / 2 高
 	"fullscreen": false,
 	"vsync": true,
+	"frame_limit": 1,           # 30 / 60 / 120 / 不限，旧配置缺项时默认 60 FPS
 	"mouse_sens": 0.0025,
 	"key_look_speed": 120.0,     # 方向键转视角的速度（度/秒）
 	"music_volume": 0.8,
@@ -55,6 +61,23 @@ func _ready() -> void:
 				if not cfg.has_section_key("settings", key):
 					values[key] = PRESETS[preset][key]
 
+	# 配置文件是外部输入；无效帧率档位回到节能的 60 FPS 默认值。
+	if not (values["frame_limit"] is int) or values["frame_limit"] < 0 or values["frame_limit"] >= FRAME_LIMITS.size():
+		values["frame_limit"] = 1
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		has_focus = false
+		_apply_frame_limit()
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		has_focus = true
+		_apply_frame_limit()
+
+
+func _apply_frame_limit() -> void:
+	Engine.max_fps = FRAME_LIMITS[values["frame_limit"]] if has_focus else BACKGROUND_FPS
+
 
 func get_value(key: String) -> Variant:
 	return values[key]
@@ -76,6 +99,7 @@ func set_preset(preset: String) -> void:
 
 
 func apply() -> void:
+	_apply_frame_limit()
 	if env:
 		env.volumetric_fog_enabled = values["volumetric_fog"]
 		env.ssao_enabled = values["ssao"]

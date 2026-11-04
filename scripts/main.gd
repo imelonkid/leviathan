@@ -143,6 +143,7 @@ func _ready() -> void:
 	debug.maze = maze
 	debug.player = player
 	debug.watchman = watchman
+	debug.encounters = [get_node("Surveyors"), get_node("DoorHolder")]
 	add_child(debug)
 
 	var bar := EnergyBar.new()

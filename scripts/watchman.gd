@@ -38,8 +38,8 @@ const ALERT_TIME := 1.0                  # 发现你后愣一下再追
 const LOSE_TIME := 5.0                   # 看不见你多久算跟丢
 const LOOK_TIME := 4.0                   # 跟丢后在原地张望多久
 const REACH := 1.8                       # 碰到你
-const PLACE_MIN := 8                     # 出现在离你多少步（块）以外
-const PLACE_MAX := 16
+const PLACE_MIN := 4                     # 出现在离你多少步（块）以外
+const PLACE_MAX := 10
 const FAR := 110.0                       # 游荡时离你超过这么远（米），或者不在你这一层，就换到你附近
 
 var model: Node3D
@@ -168,6 +168,9 @@ func _process(delta: float) -> void:
 	t += delta
 	if paths == null or player == null:
 		return
+	if paths.gen != maze.gen:
+		paths = GridPath.new(maze.gen)
+		retreat(FIRST)
 	if state == HIDDEN:
 		_hidden(delta)
 		return

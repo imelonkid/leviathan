@@ -4,6 +4,7 @@ extends CanvasLayer
 var maze: Node3D
 var player: CharacterBody3D
 var watchman: Node3D             # 守夜人：只在调试信息打开时画在小地图上，平时不剧透
+var encounters: Array[Node3D] = []
 var info: Label
 var minimap: Control
 
@@ -43,6 +44,7 @@ func _process(_delta: float) -> void:
 			p.x, p.y, p.z, maze.seed_value,
 			"  ·  飞行模式" if player.flying else "",
 		]
+		info.text += "\n量墙人：%s  ·  扶门者：%s" % [encounters[0].debug_status(), encounters[1].debug_status()]
 	if minimap.visible:
 		minimap.queue_redraw()
 

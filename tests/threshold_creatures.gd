@@ -81,9 +81,12 @@ func run() -> void:
 		creature.direction = route.dir if creature == survey else slots[0].face
 		if creature == door:
 			creature.exit_pos = slots[0]["exit"]
+			creature.mirrored = slots[0]["mirror"]
+			creature.encounter_room = slots[0]["room"]
 		creature.distance = 9.0 if creature == survey else 0.0
 		creature._begin()
 		if creature == door:
+			check(not creature.used_rooms.has(creature.encounter_room), "Unseen door holder already counted as encountered")
 			var sk: Skeleton3D = creature.rigs[0]
 			sk.force_update_all_bone_transforms()
 			for side in ["l", "r"]:
