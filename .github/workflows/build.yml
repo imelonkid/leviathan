@@ -1,5 +1,5 @@
 # 导出 macOS / Windows / Linux 三个平台。
-# push 到 main、PR、手动触发：只构建并上传为 Actions 产物（检查能否导出）。
+# push 到 main、PR、手动触发：运行回归测试，构建并上传为 Actions 产物。
 # 推 vX.Y.Z tag：构建后创建 GitHub Release 并附上三个压缩包。
 name: build
 
@@ -59,6 +59,13 @@ jobs:
 
       - name: 导入项目
         run: ~/godot/godot --headless --path . --import
+
+      - name: 怪物行为与声音回归
+        timeout-minutes: 5
+        run: |
+          for test in creature_behaviors threshold_creatures encounter_walk frame_limit threshold_audio audio_perception; do
+            ~/godot/godot --headless --audio-driver Dummy --path . --script "res://tests/$test.gd"
+          done
 
       - name: 导出
         run: |

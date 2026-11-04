@@ -52,6 +52,14 @@ func run() -> void:
 		else:
 			sound.holder_tick(6.5, 2.5, Vector3.ZERO)
 		check(sound.event_count == count, "Stationary animation retriggered SFX")
+		if kind == "surveyor":
+			sound.begin(Vector3.ZERO)
+			sound.survey_tick(3.9, actors, false)
+			check(sound.event_count == 0, "Stopped surveyors still made footsteps")
+			sound.flee_tick(0.7, actors)
+			check(sound.event_count == 3, "Fleeing surveyors did not make movement footsteps")
+			sound.flee_tick(0.7, actors)
+			check(sound.event_count == 3, "Blocked escape retriggered footsteps")
 		sound.stop()
 		for voice: AudioStreamPlayer3D in sound.voices:
 			check(not voice.playing and voice.bus == "World", "SFX leaked after encounter")

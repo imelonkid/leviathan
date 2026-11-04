@@ -14,6 +14,7 @@ var cursor := 0
 var previous: Array[float] = [0.0, 0.0, 0.0]
 var last_release := 0.0
 var event_count := 0            # 专项检查读：每次相遇实际触发了几声
+var flee_step := 0
 
 
 func _ready() -> void:
@@ -31,18 +32,19 @@ func begin(at: Vector3) -> void:
 	previous = [0.0, 0.0, 0.0]
 	last_release = 0.0
 	event_count = 0
+	flee_step = 0
 	if kind == "door_holder":
 		play(CLOTH[0], at + Vector3.UP * 1.8, -17.0, 0.8, 4.0)
 
 
-func survey_tick(time: float, actors: Array[Node3D]) -> void:
+func survey_tick(time: float, actors: Array[Node3D], stepping := true) -> void:
 	for i in actors.size():
 		var t := maxf(0.0, time - i * 0.32)
 		var old := previous[i]
 		var at := actors[i].global_position
 		var walked := floorf(t / 6.0) * 2.4 + minf(fmod(t, 6.0), 4.0) * 0.6
 		var before := floorf(old / 6.0) * 2.4 + minf(fmod(old, 6.0), 4.0) * 0.6
-		if floori(walked / 0.6) > floori(before / 0.6):
+		if stepping and floori(walked / 0.6) > floori(before / 0.6):
 			play(STEP[floori(walked / 0.6) % 2], at + Vector3.UP * 0.1, -17.0, 0.8, 3.0)
 		if crossed(old, t, 4.05):
 			play(HINGE[i % 2], at + Vector3.UP, -12.0, 0.72 + i * 0.04, 12.0)
@@ -51,6 +53,14 @@ func survey_tick(time: float, actors: Array[Node3D]) -> void:
 		if crossed(old, t, 5.35):
 			play(LATCH, at + Vector3.UP * 0.8, -13.0, 0.8, 12.0)
 		previous[i] = t
+
+
+func flee_tick(walked: float, actors: Array[Node3D]) -> void:
+	var step := floori(walked / 0.6)
+	if step > flee_step:
+		for actor: Node3D in actors:
+			play(STEP[step % 2], actor.global_position + Vector3.UP * 0.1, -17.0, 0.8, 3.0)
+	flee_step = step
 
 
 func holder_tick(time: float, release: float, at: Vector3) -> void:
