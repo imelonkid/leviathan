@@ -99,6 +99,8 @@ func _ready() -> void:
 
 	var budget := CreatureBudget.new()
 	budget.name = "CreatureBudget"
+	budget.settings = settings
+	budget.maze = maze
 	add_child(budget)
 
 	var hauler := Hauler.new()
@@ -143,6 +145,7 @@ func _ready() -> void:
 	debug.maze = maze
 	debug.player = player
 	debug.watchman = watchman
+	debug.budget = budget
 	debug.encounters = [get_node("Surveyors"), get_node("DoorHolder")]
 	add_child(debug)
 

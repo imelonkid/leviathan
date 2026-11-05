@@ -63,7 +63,7 @@ jobs:
       - name: 怪物行为与声音回归
         timeout-minutes: 5
         run: |
-          for test in creature_behaviors threshold_creatures encounter_walk frame_limit threshold_audio audio_perception; do
+          for test in creature_budget creature_behaviors threshold_creatures encounter_walk frame_limit threshold_audio audio_perception; do
             ~/godot/godot --headless --audio-driver Dummy --path . --script "res://tests/$test.gd"
           done
 

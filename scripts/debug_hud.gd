@@ -5,6 +5,7 @@ var maze: Node3D
 var player: CharacterBody3D
 var watchman: Node3D             # 守夜人：只在调试信息打开时画在小地图上，平时不剧透
 var encounters: Array[Node3D] = []
+var budget: Node
 var info: Label
 var minimap: Control
 
@@ -45,6 +46,7 @@ func _process(_delta: float) -> void:
 			"  ·  飞行模式" if player.flying else "",
 		]
 		info.text += "\n量墙人：%s  ·  扶门者：%s" % [encounters[0].debug_status(), encounters[1].debug_status()]
+		info.text += "\n已加载模型组 %d · 当前目标 %d（动态 %d～%d）" % [budget.holders.size(), budget.limit, budget.MIN_LOADED, budget.MAX_LOADED]
 	if minimap.visible:
 		minimap.queue_redraw()
 
