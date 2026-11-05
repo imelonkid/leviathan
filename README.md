@@ -114,6 +114,8 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 
 ## ⚙️ Graphics settings
 
+New players start on **Medium**, with a **1080p 3D resolution ceiling** and **60 FPS**. The ceiling preserves the window aspect ratio and limits 3D rendering on Retina, 4K and fullscreen displays while leaving text and menus at their native resolution. Choose 900p / 1080p / 1440p / Native; the lower of this ceiling and the render-scale slider applies, and resizing recalculates it. Existing quality preferences are preserved; configurations without the new option use 1080p. For lower sustained load, select Medium, 1080p and 30 FPS.
+
 The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), puddle reflections (screen-space, on by default only on High), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, the Leviathan's hum, sounds in the rooms), and a photo mode that unlocks free flight through walls.
 
 The frame limit defaults to **60 FPS**, including existing configurations without this setting. Choose 30 / 60 / 120 / Unlimited in the menu; when the app loses focus it uses 15 FPS and restores your choice on return. V-Sync can impose a lower limit. These limits reduce unnecessary rendering; hardware heat and fan noise still depend on graphics settings and the machine.

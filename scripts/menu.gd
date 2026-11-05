@@ -47,6 +47,8 @@ func _ready() -> void:
 	_check(box, "reflections", "水洼倒影（屏幕空间反射）")
 	_slider(box, "shadow_distance", "阴影距离", 60.0, 300.0, 10.0, "%d 米")
 	_slider(box, "render_scale", "渲染分辨率", 0.5, 1.0, 0.05, "%d%%", 100.0)
+	_choice(box, "resolution_limit", "3D 分辨率上限", ["900p（省电）", "1080p", "1440p", "原生"])
+	controls.resolution_limit.tooltip_text = "限制全屏和高分屏上的渲染开销，菜单和文字仍保持清晰；原生档取消上限。"
 	_choice(box, "clouds", "乌云", ["低", "中", "高"])
 	box.add_child(HSeparator.new())
 	_check(box, "fullscreen", "全屏")

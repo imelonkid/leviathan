@@ -22,19 +22,21 @@ const PRESETS := {
 }
 
 const FRAME_LIMITS := [30, 60, 120, 0]
+const RESOLUTION_LIMITS := [Vector2(1600, 900), Vector2(1920, 1080), Vector2(2560, 1440), Vector2.ZERO]
 const BACKGROUND_FPS := 15
 
 var has_focus := true
 
 var values := {
-	"preset": "high",
+	"preset": "medium",
 	"volumetric_fog": true,
-	"ssao": true,
+	"ssao": false,
 	"glow": true,
-	"shadow_distance": 250.0,
-	"render_scale": 1.0,
-	"reflections": true,         # 水洼倒影：屏幕空间反射，水洼里看得见墙和天上的东西
-	"clouds": 2,                 # 乌云质量：0 低（半分辨率、少步进、没有云环）/ 1 中 / 2 高
+	"shadow_distance": 180.0,
+	"render_scale": 0.85,
+	"reflections": false,        # 水洼倒影：高档预设开启屏幕空间反射
+	"clouds": 1,                 # 乌云质量：0 低（半分辨率、少步进、没有云环）/ 1 中 / 2 高
+	"resolution_limit": 1,       # 900p / 1080p / 1440p / 原生；只约束 3D，UI 保持原生清晰度
 	"fullscreen": false,
 	"vsync": true,
 	"frame_limit": 1,           # 30 / 60 / 120 / 不限，旧配置缺项时默认 60 FPS
@@ -64,6 +66,9 @@ func _ready() -> void:
 	# 配置文件是外部输入；无效帧率档位回到节能的 60 FPS 默认值。
 	if not (values["frame_limit"] is int) or values["frame_limit"] < 0 or values["frame_limit"] >= FRAME_LIMITS.size():
 		values["frame_limit"] = 1
+	if not (values["resolution_limit"] is int) or values["resolution_limit"] < 0 or values["resolution_limit"] >= RESOLUTION_LIMITS.size():
+		values["resolution_limit"] = 1
+	get_viewport().size_changed.connect(_apply_render_scale)
 
 
 func _notification(what: int) -> void:
@@ -77,6 +82,22 @@ func _notification(what: int) -> void:
 
 func _apply_frame_limit() -> void:
 	Engine.max_fps = FRAME_LIMITS[values["frame_limit"]] if has_focus else BACKGROUND_FPS
+
+
+func render_scale_for(size: Vector2) -> float:
+	var scale: float = values["render_scale"]
+	var limit: Vector2 = RESOLUTION_LIMITS[values["resolution_limit"]]
+	if limit != Vector2.ZERO:
+		scale = minf(scale, minf(limit.x / size.x, limit.y / size.y))
+	return scale
+
+
+func _apply_render_scale() -> void:
+	var vp := get_viewport()
+	var scale := render_scale_for(vp.get_visible_rect().size)
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if is_equal_approx(scale, 1.0) \
+		else Viewport.SCALING_3D_MODE_FSR
+	vp.scaling_3d_scale = scale
 
 
 func get_value(key: String) -> Variant:
@@ -109,11 +130,7 @@ func apply() -> void:
 	if sun:
 		sun.directional_shadow_max_distance = values["shadow_distance"]
 
-	var vp := get_viewport()
-	var scale: float = values["render_scale"]
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if is_equal_approx(scale, 1.0) \
-		else Viewport.SCALING_3D_MODE_FSR
-	vp.scaling_3d_scale = scale
+	_apply_render_scale()
 
 	var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if values["fullscreen"] \
 		else DisplayServer.WINDOW_MODE_WINDOWED
