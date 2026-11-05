@@ -78,6 +78,8 @@ Fifteen doors in every maze lead somewhere. Each room is put together the moment
 
 Creatures have three temperaments: **dangerous** (the watchman pursues), **neutral** (the hauler follows its own patrol), and **timid** (surveyors and the door holder flee). Movement checks body volumes over the whole segment, including corners; the hauler also needs space for its plate and chain, which currently limits it to the summit plaza in the three regression maps. Timid creatures are reclaimed only after 22 seconds, beyond 45 m, and fully off screen; the hauler requires 120 m and its body, plate and chain to be off screen. Looking at them, approaching them, or blocking their escape does not make them fade away. Generating a new maze still resets the creatures.
 
+**Hanged One (local licensed-asset prototype):** three suspended figures sway gently beneath cemetery branches and freeze in place under deadlight, resuming smoothly when it passes. The shared *Last Offering* model is installed locally via BlenderKit and optimized to 11,899 triangles with 1K textures. Royalty Free source assets are excluded from this public repository and all public export presets; public builds skip these figures until distribution rights are resolved. See [local setup and licensing](docs/hanged-one.md) and [measured costs](docs/entity-costs.md).
+
 ## 📦 Download
 
 Grab the latest build for your platform from **[Releases](https://github.com/imelonkid/leviathan/releases/latest)**, unzip, and run.

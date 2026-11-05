@@ -6,6 +6,7 @@ const Gen = preload("res://scripts/maze_gen.gd")
 const Tap = preload("res://assets/audio/threshold/measure_tap.wav")
 const DragShader = preload("res://scripts/rooms/blood.gdshader")
 const Crows = preload("res://scripts/crows.gd")
+const HangedOne = preload("res://scripts/hanged_one.gd")
 const KINDS := ["grave_mound", "grave_open", "grave_wall"]
 const QUOTAS := [8, 8, 5]
 const DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
@@ -26,6 +27,7 @@ var voice: AudioStreamPlayer3D
 var sound_rng := RandomNumberGenerator.new()
 var sound_timer := 0.0
 var crows: Node3D
+var hanged_one: Node3D
 
 
 func build() -> void:
@@ -77,6 +79,11 @@ func build() -> void:
 	crows.maze = maze
 	add_child(crows)
 	crows.build(trees)
+	hanged_one = HangedOne.new()
+	hanged_one.name = "倒吊者"
+	hanged_one.maze = maze
+	add_child(hanged_one)
+	hanged_one.build(trees)
 
 
 func _place(kind: String, transform: Transform3D) -> StaticBody3D:
