@@ -70,6 +70,8 @@ var link: Array = []              # link[z][x]：楼梯 / 桥的走向（Vector2
 var wall_top: Array = []          # wall_top[z][x]：墙、矮墙顶部的绝对高度（米）
 var arch: Array = []              # arch[z][x]：这条通道上方有拱门
 var arcade: Array = []            # arcade[z][x]：这块墙是拱廊墙（仍算 WALL，只是外观透空）
+var cemetery := Rect2i()          # 独立乱葬岗；外围一圈和墓区之间的格子保留通路
+var burial_plots := {}            # 完整墓体占用的格子，寻路绕开
 var courtyards: Array[Rect2i] = [] # 庭院，以块为单位（3×3 块；大广场 5×5 块）
 var walkway: Array = []           # walkway[z][x]：这块的顶上是步道（庭院围墙和连接它们的墙），顶高记在 wall_top
 var towers: Array[Dictionary] = [] # 塔楼：{block: 墙角块, kind: TOWER_*, base: 本层地面高度}
@@ -112,6 +114,8 @@ func generate(seed_value: int) -> void:
 	gatehouses.clear()
 	houses.clear()
 	courtyards.clear()
+	cemetery = Rect2i()
+	burial_plots.clear()
 	rooms.clear()
 	chasms.clear()
 	stairs.clear()
@@ -127,6 +131,7 @@ func generate(seed_value: int) -> void:
 	_make_parapets()
 	_assign_wall_heights()
 	_make_rooms()
+	_make_cemetery()
 	_make_courtyards()
 	_make_arches()
 	_make_arcades()
@@ -443,6 +448,8 @@ func _find_square(t: int, allow_border := false, size := 2) -> Rect2i:
 				return Rect2i()
 			if k == FLOOR and not is_equal_approx(height[z][x], t * TIER_H):
 				return Rect2i()
+	if r.grow(2).intersects(cemetery):
+		return Rect2i()
 	for other in courtyards:
 		if r.grow(2).intersects(other):
 			return Rect2i()
@@ -486,6 +493,47 @@ func _make_rooms() -> void:
 			break
 
 
+## 打通同高的普通墙和通道，原有入口全部保留。墓区之间与外围都是连续通路。
+func _make_cemetery() -> void:
+	var options: Array[Rect2i] = []
+	for z in range(2, n - 5):
+		for x in range(2, n - 5):
+			for size: Vector2i in [Vector2i(5, 7), Vector2i(7, 5)]:
+				var r := Rect2i(Vector2i(x, z), size)
+				if r.end.x >= n - 1 or r.end.y >= n - 1:
+					continue
+				var base := -1.0
+				var good := true
+				for zz in range(r.position.y - 1, r.end.y + 1):
+					for xx in range(r.position.x - 1, r.end.x + 1):
+						if kind[zz][xx] not in [FLOOR, WALL]:
+							good = false
+						if kind[zz][xx] == FLOOR:
+							if base < 0.0:
+								base = height[zz][xx]
+							good = good and is_equal_approx(height[zz][xx], base)
+				for room: Dictionary in rooms:
+					good = good and not r.grow(2).intersects(room.rect)
+				if good and base >= 0 and base < TOP_TIER * TIER_H:
+					options.append(r)
+	if options.is_empty():
+		return
+	cemetery = options[rng.randi_range(0, options.size() - 1)]
+	var base := 0.0
+	for z in range(cemetery.position.y, cemetery.end.y):
+		for x in range(cemetery.position.x, cemetery.end.x):
+			if kind[z][x] == FLOOR:
+				base = height[z][x]
+	for z in range(cemetery.position.y, cemetery.end.y):
+		for x in range(cemetery.position.x, cemetery.end.x):
+			kind[z][x] = FLOOR
+			height[z][x] = base
+	for z in range(cemetery.position.y + 1, cemetery.end.y - 1):
+		for x in range(cemetery.position.x + 1, cemetery.end.x - 1):
+			if x != cemetery.get_center().x and z != cemetery.get_center().y:
+				burial_plots[Vector2i(x, z)] = true
+
+
 ## 小房间：挑一些死胡同的格子（只有一条通道通进来），盖上屋顶；那条通道变成厚墙上的窄拱门。
 ## 死胡同本来就只连一条路，改成房间不影响连通性。四周的矮墙改成实墙，免得屋顶下面漏一圈
 func _make_small_rooms() -> void:
@@ -511,7 +559,7 @@ func _make_small_rooms() -> void:
 					or not is_equal_approx(height[p.y][p.x], height[b.y][b.x]) \
 					or not is_equal_approx(height[q.y][q.x], height[b.y][b.x]):
 				continue
-			var taken := false
+			var taken := cemetery.grow(1).has_point(b)
 			for r in courtyards:
 				if r.grow(1).has_point(b):
 					taken = true
@@ -770,6 +818,8 @@ func _wall_path(a: Rect2i, b: Rect2i, base: float) -> Array:
 
 
 func _walkway_ok(p: Vector2i, base: float) -> bool:
+	if cemetery.grow(1).has_point(p):
+		return false
 	if p.x <= 0 or p.y <= 0 or p.x >= n - 1 or p.y >= n - 1:
 		return false
 	if kind[p.y][p.x] != WALL and not _spannable(p, base):
@@ -904,6 +954,8 @@ func _overpass_ok(root: Vector2i, out: Vector2i, level: int, stair: int) -> bool
 	for k in range(1, last + 1):
 		var p := root + out * k
 		if p.x < 1 or p.y < 1 or p.x >= n - 1 or p.y >= n - 1:
+			return false
+		if cemetery.grow(1).has_point(p):
 			return false
 		var kk: int = kind[p.y][p.x]
 		if kk == TERRACE or kk == STAIR and k <= level:
@@ -1050,6 +1102,8 @@ func _shuffle(a: Array) -> void:
 
 ## 周围 3×3 里没有楼梯、桥、深渊、观景台、小房间门口、飞桥，开放块都在本层地面上；不挨着房间
 func _quiet(p: Vector2i, base: float) -> bool:
+	if cemetery.grow(1).has_point(p):
+		return false
 	for room: Dictionary in rooms:
 		if (room["rect"] as Rect2i).grow(2).has_point(p):
 			return false
@@ -1111,7 +1165,7 @@ func path_length(from: Vector2i, to: Vector2i) -> int:
 			return dist[p]
 		for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 			var q := p + d
-			if dist.has(q) or not is_open(q.x, q.y):
+			if dist.has(q) or not is_open(q.x, q.y) or burial_plots.has(q):
 				continue
 			if absf(floor_height(q.x, q.y) - floor_height(p.x, p.y)) > STAIR_RISE + 0.01:
 				continue
@@ -1135,7 +1189,7 @@ func _pick_spawn() -> void:
 		for k in [0, 2, -2, 4, -4, 6, -6]:
 			var p: Vector2i = center + out * db + along * k
 			var front: Vector2i = p - out
-			if kind[p.y][p.x] != TERRACE or arch[front.y][front.x] or path_length(p, center) < 0:
+			if kind[p.y][p.x] != TERRACE or arch[front.y][front.x] or cemetery.grow(5).has_point(p) or path_length(p, center) < 0:
 				continue
 			if kind[front.y][front.x] == WALL:
 				kind[front.y][front.x] = PARAPET

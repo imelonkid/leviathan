@@ -11,6 +11,7 @@ const TrimKit = preload("res://assets/models/trim_kit.glb")   # 建筑装饰件�
 const Landmarks = preload("res://assets/models/landmarks.glb")   # 塔楼和门楼，tools/blender/landmarks.py 生成
 const Houses = preload("res://assets/models/houses.glb")         # 带拱廊的小楼，tools/blender/houses.py 生成
 const Room = preload("res://scripts/rooms/room.gd")
+const Graves = preload("res://scripts/graves.gd")
 const ROOM_NEAR := 30.0          # 走到离房间中心这么近才把屋里搭出来
 const ROOM_FAR := 60.0           # 走远到这么远再拆掉
 const DOOR_R := 0.65             # 小房间的门：厚墙上的窄拱门，半宽、起拱高度、这段墙的高度
@@ -80,6 +81,7 @@ var room_visits := {}            # 房间序号 → 会变的屋子变过几次�
 var room_nodes := {}             # 房间序号 → 已经搭出来的屋里（Room 节点）
 var room_check := 0.0
 var body: StaticBody3D
+var graves: Node3D
 
 
 ## 可重复调用：换了 seed_value 再调一次就是新迷宫
@@ -134,6 +136,11 @@ func build() -> void:
 	_build_plaza_monoliths()
 	_build_rooms()
 	_build_outer_field()
+	graves = Graves.new()
+	graves.name = "Graves"
+	graves.maze = self
+	add_child(graves)
+	graves.build()
 	_commit(wall_boxes, wall_mat)
 	_commit(floor_boxes, floor_mat)
 	_commit(field_boxes, wall_mat, false)

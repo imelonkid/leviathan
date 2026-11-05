@@ -1,5 +1,7 @@
 # 怪物拟音素材
 
+`measure_tap.wav` 也用于嵌墙石棺的远处轻敲，运行时降低音量和音高，沿用相同 CC0 授权。
+
 均为 CC0，从原始 OGG 录音转为单声道 16 位 PCM WAV（ffmpeg），用于 3D 定位。未剪辑或变速，播放时按动作调整音量和音高。
 
 - rubberduck：[100 CC0 metal and wood SFX](https://opengameart.org/content/100-cc0-metal-and-wood-sfx)，[原包](https://opengameart.org/sites/default/files/100-CC0-wood-metal-SFX.zip)。金属弹簧用于量尺铰链，金属轻击用于落尺，木材裂响和吱声用于扶门者的手指/关节拟音，并非人体录音。
