@@ -78,9 +78,11 @@ jobs:
           test -s export/linux/Leviathan.x86_64
 
       - name: 公开安装包排除本地授权模型
+        timeout-minutes: 1
         run: |
-          chmod +x export/linux/Leviathan.x86_64
-          export/linux/Leviathan.x86_64 --headless --audio-driver Dummy --script res://tests/hanged_one.gd -- --public
+          ~/godot/godot --headless --audio-driver Dummy --path . --export-pack Linux /tmp/leviathan-public-check.pck
+          cd /tmp
+          ~/godot/godot --headless --audio-driver Dummy --main-pack /tmp/leviathan-public-check.pck --script res://tests/hanged_one.gd -- --public
 
       - name: 打包
         run: |
