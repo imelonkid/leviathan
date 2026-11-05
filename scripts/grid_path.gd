@@ -12,6 +12,7 @@ var connected := {}              # 从出生点走得到的块（找醒来的地
 
 func _init(g: RefCounted) -> void:
 	gen = g
+	blocked = gen.burial_plots.duplicate()
 	for r: Dictionary in gen.rooms:
 		var rect: Rect2i = r["rect"]
 		for z in range(rect.position.y, rect.end.y):

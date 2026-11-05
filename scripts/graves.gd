@@ -1,12 +1,12 @@
 extends Node3D
-## 破墓只占安静墙边，不改迷宫连通图；始终留出中心和每个出口的 2.4 米净空。
+## 成人尺度的乱葬岗占用专用墓区；外围和墓区之间保留 2.4 米通路。
 const Models = preload("res://assets/models/graves.glb")
 const Materials = preload("res://scripts/creature_materials.gd")
 const Gen = preload("res://scripts/maze_gen.gd")
 const Tap = preload("res://assets/audio/threshold/measure_tap.wav")
 const DragShader = preload("res://scripts/rooms/blood.gdshader")
 const KINDS := ["grave_mound", "grave_open", "grave_wall"]
-const QUOTAS := [7, 6, 5]
+const QUOTAS := [8, 8, 5]
 const DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
 const CLEAR_WIDTH := 2.4
 const WALL_GAP := 0.2
@@ -20,6 +20,7 @@ var meshes := {}
 var shapes := {}
 var bounds := {}
 var sites: Array[Dictionary] = []
+var trees: Array[StaticBody3D] = []
 var voice: AudioStreamPlayer3D
 var sound_rng := RandomNumberGenerator.new()
 var sound_timer := 0.0
@@ -48,23 +49,19 @@ func build() -> void:
 		bounds[key] = mesh.get_aabb()
 		shapes[key] = mesh.create_trimesh_shape()
 	kit.free()
+	_ground(palette.earth)
 	sites = plan()
 	for site: Dictionary in sites:
-		var body := StaticBody3D.new()
-		body.name = site.kind
-		body.collision_layer = 1 | COLLISION_LAYER
-		body.collision_mask = 0
-		add_child(body)
-		body.global_transform = site.transform
-		var model := MeshInstance3D.new()
-		model.mesh = meshes[site.kind]
-		body.add_child(model)
-		var collider := CollisionShape3D.new()
-		collider.shape = shapes[site.kind]
-		body.add_child(collider)
-		site["body"] = body
+		site["body"] = _place(site.kind, site.transform)
 		if site.kind == "grave_open":
-			_drag_marks(body)
+			_drag_marks(site.body)
+	var index := 0
+	for p: Vector2i in maze.gen.burial_plots:
+		if index % 3 == 0:
+			var at: Vector3 = maze.block_center(p.x, p.y)
+			at.y = maze.gen.height[p.y][p.x]
+			trees.append(_place("grave_tree", Transform3D(Basis(Vector3.UP, index * 1.7), at)))
+		index += 1
 	voice = AudioStreamPlayer3D.new()
 	voice.stream = Tap
 	voice.volume_db = -24.0
@@ -73,6 +70,55 @@ func build() -> void:
 	add_child(voice)
 	sound_rng.seed = maze.seed_value + 73092
 	sound_timer = sound_rng.randf_range(20, 40)
+
+
+func _place(kind: String, transform: Transform3D) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = kind
+	body.collision_layer = 1 | COLLISION_LAYER
+	body.collision_mask = 0
+	add_child(body)
+	body.global_transform = transform
+	var model := MeshInstance3D.new()
+	model.mesh = meshes[kind]
+	body.add_child(model)
+	var collider := CollisionShape3D.new()
+	collider.shape = shapes[kind]
+	body.add_child(collider)
+	return body
+
+
+func _ground(earth: StandardMaterial3D) -> void:
+	var r: Rect2i = maze.gen.cemetery
+	if r.size == Vector2i.ZERO:
+		return
+	var patch := MeshInstance3D.new()
+	patch.name = "BurialEarth"
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(r.size) * maze.block
+	patch.mesh = plane
+	patch.material_override = earth
+	patch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(patch)
+	var corner: Vector3 = maze.block_center(r.position.x, r.position.y)
+	patch.position = corner + Vector3((r.size.x - 1) * maze.block / 2.0, maze.gen.height[r.position.y][r.position.x] + 0.012, (r.size.y - 1) * maze.block / 2.0)
+
+	# 局部冷色天光与低处薄雾，沿用现有体积雾渲染，不增加阴影灯。
+	var fill := OmniLight3D.new()
+	fill.light_color = Color(0.38, 0.58, 0.85)
+	fill.light_energy = 1.4
+	fill.omni_range = maxf(plane.size.x, plane.size.y)
+	fill.shadow_enabled = false
+	fill.position = patch.position + Vector3.UP * 8.0
+	add_child(fill)
+	var fog := FogVolume.new()
+	fog.size = Vector3(plane.size.x, 1.5, plane.size.y)
+	var material := FogMaterial.new()
+	material.density = 0.025
+	material.albedo = Color(0.32, 0.42, 0.55)
+	fog.material = material
+	fog.position = patch.position + Vector3.UP * 0.65
+	add_child(fog)
 
 
 func lanes(p: Vector2i) -> Array[Rect2]:
@@ -93,6 +139,8 @@ func footprint(kind: String, transform: Transform3D) -> Rect2:
 
 func eligible(p: Vector2i) -> bool:
 	var g: RefCounted = maze.gen
+	if g.cemetery.grow(1).has_point(p):
+		return false
 	if g.kind[p.y][p.x] != Gen.FLOOR or g.height[p.y][p.x] >= Gen.TOP_TIER * Gen.TIER_H:
 		return false
 	if g.arch[p.y][p.x] or g.span[p.y][p.x] or g.doorway[p.y][p.x] or not is_nan(g.overpass[p.y][p.x]) or maze._next_to_room(p):
@@ -149,36 +197,39 @@ func plan() -> Array[Dictionary]:
 		options[i] = options[j]
 		options[j] = swap
 	var chosen: Array[Dictionary] = []
-	var used := {}
-	for type_index in KINDS.size():
-		var kind: String = KINDS[type_index]
-		var count := 0
-		for option: Dictionary in options:
-			if used.has(option.block):
-				continue
-			var at: Vector3 = option.transform.origin
-			var apart := true
-			for placed: Dictionary in chosen:
-				if placed.transform.origin.distance_to(at) < MIN_GAP:
-					apart = false
-					break
-			if not apart:
-				continue
-			var rect := footprint(kind, option.transform).grow(0.03)
-			var clear := true
-			for lane: Rect2 in lanes(option.block):
-				if rect.intersects(lane):
-					clear = false
-					break
-			if not clear:
-				continue
-			var site := option.duplicate()
-			site["kind"] = kind
-			chosen.append(site)
-			used[option.block] = true
-			count += 1
-			if count >= QUOTAS[type_index]:
-				break
+	# 每个墓区两座完整墓体；错位和偏转留在墓区内，不侵占通路。
+	for p: Vector2i in maze.gen.burial_plots:
+		var turn := Basis(Vector3.UP, rng.randi_range(0, 3) * PI / 2.0 + rng.randf_range(-0.1, 0.1))
+		var offset := Vector3(rng.randf_range(-0.08, 0.08), 0, rng.randf_range(-0.08, 0.08))
+		var swap := rng.randf() < 0.5
+		for side in [-1, 1]:
+			var center: Vector3 = maze.block_center(p.x, p.y)
+			center.y = maze.gen.height[p.y][p.x]
+			center += offset + turn * Vector3(side * 1.02, 0, rng.randf_range(-0.27, 0.27))
+			var basis := turn * Basis(Vector3.UP, rng.randf_range(-0.03, 0.03) + (PI if rng.randf() < 0.35 else 0.0))
+			chosen.append({"kind": "grave_mound" if (side == -1) != swap else "grave_open", "block": p, "wall": Vector2i(-1, -1), "transform": Transform3D(basis, center)})
+	var count := 0
+	for option: Dictionary in options:
+		var at: Vector3 = option.transform.origin
+		var apart := true
+		for placed: Dictionary in chosen:
+			if placed.transform.origin.distance_to(at) < MIN_GAP:
+				apart = false
+		if not apart:
+			continue
+		var rect := footprint("grave_wall", option.transform).grow(0.03)
+		var clear := true
+		for lane: Rect2 in lanes(option.block):
+			if rect.intersects(lane):
+				clear = false
+		if not clear:
+			continue
+		var site := option.duplicate()
+		site["kind"] = "grave_wall"
+		chosen.append(site)
+		count += 1
+		if count >= QUOTAS[2]:
+			break
 	return chosen
 
 
@@ -197,7 +248,7 @@ func _drag_marks(parent: Node3D) -> void:
 	strip.mesh = quad
 	strip.material_override = material
 	strip.rotation.x = -PI / 2.0
-	strip.position = Vector3(0.0, 0.018, 1.5)
+	strip.position = Vector3(0.0, 0.018, 0.4)
 	strip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(strip)
 
