@@ -920,7 +920,7 @@ func _process(delta: float) -> void:
 		var d := eye.distance_to(_room_center(room))
 		if d < ROOM_NEAR and not room_nodes.has(i):
 			room_nodes[i] = _make_room(i)
-		elif d > ROOM_FAR and room_nodes.has(i):
+		elif d > ROOM_FAR and room_nodes.has(i) and room_nodes[i].residents == 0:
 			(room_nodes[i] as Node).queue_free()
 			room_nodes.erase(i)
 

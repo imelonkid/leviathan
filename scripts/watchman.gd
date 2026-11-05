@@ -7,7 +7,7 @@ extends Node3D
 ## 发现你：你在它那道光里（前方 GAZE_RANGE 米、SIGHT_ANGLE 度以内），或者你的提灯开着、离它不到 LAMP_SEEN 米，
 ## 或者你就在它身边——而且中间没有墙挡着。发现后它停下、灯一亮、转向你，接着追；比你走得快、比你跑得慢。
 ## 甩掉它：跑开、躲进屋里（它进不了房间）、爬上墙头、滑翔到下一层；看不见你 LOSE_TIME 秒后，
-## 它走到最后看见你的地方张望一会儿，再回去游荡。你走远了（换了一层、隔得太远），它就在你看不见的时候换到你附近。
+## 它走到最后看见你的地方张望一会儿，再回去游荡。你走远了，它在离开画面且距离足够远后才换到你附近。
 ## 追到你身边发出 caught，它停在你面前；接下来的事（黑屏、在低一层醒来）在 caught.gd，那边会让它退下（retreat）。
 ## 模型不常驻：快出场时由 creature_budget.gd 在后台加载、给名额，退下一阵后释放（灯也跟着模型走）。
 ## 声音在 watchman_sounds.gd：脚步、钥匙叮当、火声，发现你、抓住你各一声。
@@ -19,6 +19,8 @@ const CreatureMaterials = preload("res://scripts/creature_materials.gd")
 const CreatureBudget = preload("res://scripts/creature_budget.gd")
 const GridPath = preload("res://scripts/grid_path.gd")
 const Sounds = preload("res://scripts/watchman_sounds.gd")
+const Space = preload("res://scripts/creature_space.gd")
+const TEMPERAMENT = Space.Temperament.DANGEROUS
 
 enum { HIDDEN, ROAM, ALERT, CHASE, SEARCH, HOLD }
 
@@ -38,8 +40,8 @@ const ALERT_TIME := 1.0                  # 发现你后愣一下再追
 const LOSE_TIME := 5.0                   # 看不见你多久算跟丢
 const LOOK_TIME := 4.0                   # 跟丢后在原地张望多久
 const REACH := 1.8                       # 碰到你
-const PLACE_MIN := 8                     # 出现在离你多少步（块）以外
-const PLACE_MAX := 16
+const PLACE_MIN := 4                     # 出现在离你多少步（块）以外
+const PLACE_MAX := 10
 const FAR := 110.0                       # 游荡时离你超过这么远（米），或者不在你这一层，就换到你附近
 
 var model: Node3D
@@ -76,9 +78,12 @@ var last_seen := Vector2i.ZERO
 var relocate_t := 0.0
 var repath_t := 0.0
 var glare := 1.0                         # 灯的亮度倍数：发现你时亮一下
+var body_space: RefCounted
 
 
 func _ready() -> void:
+	# 下沿避开斜坡，覆盖大衣、手臂和高于 3 米的提灯。
+	body_space = Space.new(self, player, AABB(Vector3(-0.7, 0.6, -0.7), Vector3(1.4, 2.8, 1.4)))
 	rng.randomize()
 	noise.seed = rng.randi()
 	noise.frequency = 3.0
@@ -168,6 +173,9 @@ func _process(delta: float) -> void:
 	t += delta
 	if paths == null or player == null:
 		return
+	if paths.gen != maze.gen:
+		paths = GridPath.new(maze.gen)
+		retreat(FIRST)
 	if state == HIDDEN:
 		_hidden(delta)
 		return
@@ -193,7 +201,7 @@ func _process(delta: float) -> void:
 				relocate_t -= delta
 				if relocate_t <= 0.0:
 					relocate_t = 8.0
-					if _too_far() and not _player_sees_me():
+					if _too_far() and not body_space.on_screen(global_position, Basis.IDENTITY, player.cam):
 						_place()
 		ALERT:
 			_face(player.global_position, delta, 8.0)
@@ -219,14 +227,14 @@ func _process(delta: float) -> void:
 				moved = _follow(CHASE_SPEED, delta)
 				if route.is_empty() and seg_t >= 1.0 and seen:
 					moved = _approach(player.global_position, CHASE_SPEED * delta, delta)
-				if _flat_dist(player.global_position) < REACH and absf(player.global_position.y - global_position.y) < 2.5:
+				if seen and _clear(lamp.global_position, player.cam.global_position) and _flat_dist(player.global_position) < REACH and absf(player.global_position.y - global_position.y) < 2.5:
 					state = HOLD
 					sounds.caught()
 					caught.emit()
 		SEARCH:
 			if seen:
 				_alert()
-			elif not route.is_empty():
+			elif not route.is_empty() or seg_t < 1.0:
 				moved = _follow(SEARCH_SPEED, delta)
 			else:
 				# 走到最后看见你的地方，左右张望一会儿
@@ -334,7 +342,7 @@ func _clear(a: Vector3, b: Vector3) -> bool:
 
 
 func _too_far() -> bool:
-	return _flat_dist(player.global_position) > FAR or absf(player.global_position.y - global_position.y) > 6.0
+	return global_position.distance_to(player.global_position) > FAR
 
 
 ## 出现在你附近：从你所在的块往外走 PLACE_MIN～PLACE_MAX 步、你看不见的一块（还在出生的观景台上时找不到，等你进了迷宫）
@@ -351,6 +359,8 @@ func _place() -> bool:
 	var cam := get_viewport().get_camera_3d()
 	for b in cands.slice(0, 20):
 		var p := _center(b)
+		if not body_space.fits(p):
+			continue
 		if cam and _clear(cam.global_position, p + Vector3(0, 2.8, 0)):
 			continue
 		global_position = p
@@ -385,7 +395,9 @@ func _roam_target() -> void:
 
 ## 规划一条到 target 的路（target 走不进去就取它旁边能走的一块）
 func _go(target: Vector2i) -> void:
-	var here := _block_of(global_position)
+	# 追击每 0.4 秒重规划，先走完当前段，避免从拐角外侧斜切过墙。
+	var in_segment := seg_t < 1.0
+	var here := _block_of(seg_to if in_segment else global_position)
 	var to: Vector2i = paths.nearest(target)
 	if here.x < 0 or to.x < 0:
 		route.clear()
@@ -394,9 +406,9 @@ func _go(target: Vector2i) -> void:
 	if r.is_empty():
 		route.clear()
 		return
-	r.pop_front()                         # 脚下这块不用再走回中心
+	if in_segment or global_position.distance_to(_center(here)) < 0.05:
+		r.pop_front()
 	route = r
-	seg_t = 1.0
 
 
 ## 沿 route 走 speed × delta；返回这一帧走了多远。到了终点 route 变空
@@ -412,10 +424,16 @@ func _follow(speed: float, delta: float) -> float:
 			seg_t = 0.0
 		var length := maxf(seg_from.distance_to(seg_to), 0.01)
 		var step := minf(left, (1.0 - seg_t) * length)
-		seg_t += step / length
+		var next_seg_t := seg_t + step / length
+		var destination := _grounded(seg_from.lerp(seg_to, next_seg_t))
+		if is_nan(destination.y) or not body_space.can_move(Transform3D(Basis.IDENTITY, global_position), Transform3D(Basis.IDENTITY, destination)):
+			route.clear()
+			seg_t = 1.0
+			break
+		seg_t = next_seg_t
 		left -= step
 		moved += step
-		global_position = seg_from.lerp(seg_to, seg_t)
+		global_position = destination
 	if moved > 0.0:
 		_face(seg_to, delta, 4.0 if speed < CHASE_SPEED else 7.0)
 	return moved
@@ -427,9 +445,21 @@ func _approach(target: Vector3, step: float, delta: float) -> float:
 	var s := minf(step, maxf(d.length() - REACH * 0.8, 0.0))
 	if s <= 0.0:
 		return 0.0
-	global_position += d.normalized() * s
+	var destination := _grounded(global_position + d.normalized() * s)
+	if is_nan(destination.y) or not paths.walkable(_block_of(destination)) or not body_space.can_move(Transform3D(Basis.IDENTITY, global_position), Transform3D(Basis.IDENTITY, destination)):
+		return 0.0
+	global_position = destination
 	_face(target, delta, 7.0)
 	return s
+
+
+func _grounded(at: Vector3) -> Vector3:
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 2.2, at - Vector3.UP * 4.5)
+	query.exclude = [player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	# 射线没有找到地面就是无支撑，本步不能沿原高度继续悬空前进。
+	at.y = hit.position.y if not hit.is_empty() else NAN
+	return at
 
 
 func _face(target: Vector3, delta: float, rate: float) -> void:

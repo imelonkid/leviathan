@@ -20,6 +20,7 @@ func check(ok: bool, message: String) -> void:
 func run() -> void:
 	var main := Main.instantiate()
 	root.add_child(main)
+	main.player.set_physics_process(false)
 	await physics_frame
 	await physics_frame
 	var maze: Node3D = main.maze
@@ -46,6 +47,8 @@ func run() -> void:
 	for i in maze.gen.rooms.size():
 		if not maze.gen.rooms[i]["small"] and not maze.room_nodes.has(i):
 			maze.room_nodes[i] = maze._make_room(i)
+	await physics_frame
+	await physics_frame
 	var slots: Array[Dictionary] = door.door_slots()
 	check(not slots.is_empty(), "No door slots in actual scene")
 	print("actual room slots: ", slots.size())
@@ -81,9 +84,13 @@ func run() -> void:
 		creature.direction = route.dir if creature == survey else slots[0].face
 		if creature == door:
 			creature.exit_pos = slots[0]["exit"]
+			creature.mirrored = slots[0]["mirror"]
+			creature.encounter_room = slots[0]["room"]
 		creature.distance = 9.0 if creature == survey else 0.0
 		creature._begin()
+		check(is_equal_approx(creature.alpha, 1.0), "Short doorway encounter was hidden by transparent fade-in")
 		if creature == door:
+			check(not creature.used_rooms.has(creature.encounter_room), "Unseen door holder already counted as encountered")
 			var sk: Skeleton3D = creature.rigs[0]
 			sk.force_update_all_bone_transforms()
 			for side in ["l", "r"]:
@@ -157,8 +164,10 @@ func run() -> void:
 					for finger in 4:
 						check(sk.find_bone("finger_%d_%s" % [finger, side]) >= 0, "Missing finger pivot")
 		creature.retreat = true
+		var max_withdraw := 0.0
 		for frame in 210:
 			creature._tick(1.0 / 30.0)
+			max_withdraw = maxf(max_withdraw, creature.global_position.distance_to(creature.start_pos))
 			if creature == door and frame == 29:
 				check(creature.alpha > 0.9, "Door holder faded before releasing its hands")
 				var sk: Skeleton3D = creature.rigs[0]
@@ -171,8 +180,21 @@ func run() -> void:
 			if not creature.active:
 				break
 		if creature == door:
-			check(creature.global_position.distance_to(creature.start_pos) > 1.3, "Door holder failed to withdraw")
-		check(not creature.active and not creature.visible, "Creature failed to leave")
+			check(max_withdraw > 1.3, "Door holder failed to withdraw")
+		# 盯着看，即使计时结束、超过回收距离也必须保留。
+		main.player.global_position = creature.global_position + creature.direction * 60.0 + Vector3.UP * 3
+		main.player.cam.look_at(creature.global_position + Vector3.UP * 1.6)
+		creature.elapsed = 120.0
+		creature._tick(0.0)
+		check(creature.active and creature.visible and creature.alpha > 0.9, "Watched creature disappeared")
+		main.player.global_position = creature.global_position + creature.direction * 10.0 + Vector3.UP * 3
+		main.player.cam.look_at(main.player.cam.global_position + creature.direction * 10)
+		creature._tick(0.0)
+		check(creature.active and creature.visible, "Nearby off-screen creature disappeared")
+		main.player.global_position = creature.global_position + creature.direction * 60.0 + Vector3.UP * 3
+		main.player.cam.look_at(main.player.cam.global_position + creature.direction * 10)
+		creature._tick(0.0)
+		check(not creature.active and not creature.visible, "Distant off-screen creature was not reclaimed")
 		creature.used_rooms[0] = true
 		creature.last_gen = Gen.new()
 		creature._process(0.01)

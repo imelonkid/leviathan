@@ -49,6 +49,7 @@ var rockers: Array[Node3D] = []      # 会自己摇起来的摇椅
 var drifters: Array[Node3D] = []     # 会自己滑开的轮椅
 var lights: Array[Light3D] = []
 var entered := false
+var residents := 0             # 怪物仍在屋里时，不重搭家具，以免把它夹进新摆设。
 var inside := false
 var busy_slots: Array[Vector3] = []   # 被前墙的大件（黑板）占掉的墙段，不再往上挂、往下靠
 
@@ -88,7 +89,7 @@ func _process(delta: float) -> void:
 		if inside and not entered:
 			entered = true
 			_on_enter()
-		elif shifting and entered and not inside and _turned_away(cam):
+		elif shifting and residents == 0 and entered and not inside and _turned_away(cam):
 			_shift()
 			return
 	for f in tickers:

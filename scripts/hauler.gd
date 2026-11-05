@@ -1,30 +1,26 @@
 extends Node3D
-## 拖链者：比墙还高、驼背的苍白巨物，头焊在一截铆钉锅炉罐里（观察窗里透出一点暗光），穿着一身对它太小的旧衣服（褪色暗红外套、皮围裙、皮挽具、帆布裤、脏绷带），
-## 挽具背后的铁环拴着链子，拖着一块锈铁板，在远处横穿过去。不攻击、不追人，也从不靠近——
-## 你走近到 FADE_NEAR 以内，它就慢慢淡进雾里。每隔几分钟，你在屋外、又看得见远处的时候（街上两边的墙挡得死，
-## 多半要在墙头步道、观景台、屋顶上或者滑翔时），它会在你前方 45～75 米处走过一段（约 36 米、二十几秒），
-## 铁板拖地的声音从它那里传来（借 distant_sounds.gd 的“远处的金属”）。
-## 模型来自 tools/blender/creatures.py（creatures.glb）：身体和衣服绑在一副骨骼上，走路的动作在这里按骨骼摆。
-## 模型不常驻：快出场时由 creature_budget.gd 在后台加载、给名额，退场一阵后释放。
+## 中立的拖链者：在能容纳身体、铁板和链子的开阔区域独立巡游，忽视玩家。
+## 整段路径按身体体积验证；靠近、进屋、走完一段都不会使它淡出。
+## 只有离玩家足够远且整个模型离开画面后，才结束相遇并回收名额。
 
 const MODEL := "res://assets/models/creatures.glb"
 const CreatureMaterials = preload("res://scripts/creature_materials.gd")
 const CreatureBudget = preload("res://scripts/creature_budget.gd")
+const Space = preload("res://scripts/creature_space.gd")
+const TEMPERAMENT = Space.Temperament.NEUTRAL
 
 const FIRST_MIN := 70.0          # 开局后多久第一次可能出现（秒）
 const FIRST_MAX := 110.0
 const GAP_MIN := 130.0           # 之后每隔多久一次
 const GAP_MAX := 220.0
 const RETRY := 8.0               # 到点了但这会儿看不见它（你在街上、被墙挡着），隔多久再试
-const DIST_MIN := 45.0           # 出现在多远（再远就被雾吞了）
-const DIST_MAX := 75.0
-const PATH := 36.0               # 一次走多长
+const FAR := 120.0              # 离得足够远、身体和拖板都不在画面中时才能回收
 const SPEED := 1.3               # 走多快（米/秒）
 const STRIDE := 3.6              # 一步多长（米）：腿摆一个来回走两步
-const FADE_NEAR := 28.0          # 走近到这么近它就淡掉
-const FADE_TIME := 2.5
+const FADE_TIME := 0.6
 const SCALE := 1.05              # 模型驼着背最高处约 15 米，再放大一点，上半身高出墙头
 const PLATE_BACK := 10.0         # 铁板拖在身后多远（米）
+const RING := Vector3(0, 8.9, -1.35) * SCALE  # 与 tools/blender/creatures.py 的挽具铁环一致
 
 var player: Node3D               # main 注入
 var maze: Node3D
@@ -43,16 +39,26 @@ var mats: Array[BaseMaterial3D] = []
 var rng := RandomNumberGenerator.new()
 var next_t := 0.0
 var walking := false
-var from := Vector3.ZERO
 var dir := Vector3.FORWARD
 var travelled := 0.0
 var alpha := 0.0
-var leaving := false
 var sound_t := 0.0
 var idle_t := 0.0                # 模型加载着、但没在走，已经多久了
+var last_gen: RefCounted
+var patrol_cache: Array[Dictionary] = []
+var patrol_center := Vector3.ZERO
+var patrol_radius := 3.0
+var patrol_angle := 0.0
+var body_space: RefCounted
+var plate_space: RefCounted
+var chain_space: RefCounted
 
 
 func _ready() -> void:
+	# 包住模型的约 6.6 米宽身体、前伸的头，以及拖板；不把它硬塞进 5 米窄巷。
+	body_space = Space.new(self, player, AABB(Vector3(-4.0, 0.12, -3.8), Vector3(8.0, 16.6, 13.2)))
+	plate_space = Space.new(self, player, AABB(Vector3(-2.5, 0.06, -3.9), Vector3(5, 1.1, 4.4)))
+	chain_space = Space.new(self, player, AABB(Vector3.ONE * -0.6, Vector3.ONE * 1.2))
 	rng.randomize()
 	next_t = rng.randf_range(FIRST_MIN, FIRST_MAX)
 	visible = false
@@ -115,121 +121,147 @@ func _materials() -> Dictionary:
 
 
 func _process(delta: float) -> void:
-	var cam := get_viewport().get_camera_3d()
-	if cam == null:
-		return
+	if last_gen != maze.gen:
+		last_gen = maze.gen
+		patrol_cache.clear()
+		walking = false
+		visible = false
+		next_t = rng.randf_range(FIRST_MIN, FIRST_MAX)
+	var cam: Camera3D = player.cam
 	if not walking:
 		next_t -= delta
-		if model == null:
-			if next_t < CreatureBudget.PREFETCH:
-				budget.prefetch(MODEL)
-			if next_t <= 0.0:
-				var scene: PackedScene = budget.take(self, MODEL)
-				if scene == null:
-					next_t = 2.0          # 名额满了或者还没加载完
-					return
-				_build(scene)
-		else:
+		if model != null:
 			idle_t += delta
-			if idle_t > CreatureBudget.KEEP and next_t > CreatureBudget.PREFETCH:
+			if idle_t > CreatureBudget.KEEP:
 				_unload()
+		if next_t > 0.0:
+			if model == null and next_t < CreatureBudget.PREFETCH:
+				budget.prefetch(MODEL)
+			return
+		next_t = RETRY
+		var site := find_patrol(cam)
+		if site.is_empty():
+			return
+		if model == null:
+			var scene: PackedScene = budget.take(self, MODEL)
+			if scene == null:
 				return
-		if next_t <= 0.0:
-			var indoor: bool = soundscape != null and soundscape.indoor
-			next_t = rng.randf_range(GAP_MIN, GAP_MAX) if not indoor and start(cam) else RETRY
+			_build(scene)
+		start_patrol(site)
 		return
 	_walk(delta, cam)
 
 
-## 在镜头前方挑一段路：离 DIST_MIN～DIST_MAX、横着走、整段落在同一层的地面上（腿不会插进挡土墙里），
-## 而且从你这里看得见它的上半身（路上三处至少两处）——不然出来了也白出来；挑不到这次就不出来
-func start(cam: Camera3D) -> bool:
-	var eye := cam.global_position
-	var fwd := -cam.global_basis.z
-	fwd.y = 0.0
-	fwd = fwd.normalized()
-	for attempt in 12:
-		var look := fwd.rotated(Vector3.UP, rng.randf_range(-0.6, 0.6))
-		var mid := eye + look * rng.randf_range(DIST_MIN, DIST_MAX)
-		var side := look.cross(Vector3.UP) * (1.0 if rng.randf() < 0.5 else -1.0)
-		var a := mid - side * PATH / 2.0
-		var ground := _ground(mid)
-		if is_nan(ground):
-			continue
-		var flat := true
-		for k in 5:
-			var g := _ground(a + side * PATH * k / 4.0)
-			if is_nan(g) or absf(g - ground) > 0.5:
-				flat = false
+func patrol_transform(center: Vector3, radius: float, angle: float) -> Transform3D:
+	var at := center + Vector3(cos(angle), 0, sin(angle)) * radius
+	var forward := Vector3(-sin(angle), 0, cos(angle))
+	return Transform3D(Basis.looking_at(-forward), at)
+
+
+func plate_transform(at: Transform3D) -> Transform3D:
+	return Transform3D(at.basis, at.origin - at.basis.z * PLATE_BACK)
+
+
+func _supported(at: Vector3) -> bool:
+	var block_at: Vector2 = maze.world_to_block(at)
+	var p := Vector2i(floori(block_at.x), floori(block_at.y))
+	return maze.gen.is_open(p.x, p.y) and absf(maze.gen.floor_height(p.x, p.y) - at.y) < 0.1
+
+
+func patrol_step_clear(a: Transform3D, b: Transform3D) -> bool:
+	if not body_space.can_move(a, b) or not plate_space.can_move(plate_transform(a), plate_transform(b)):
+		return false
+	# 链子本身也不能斜穿墙：铁板的钩到背后铁环之间留出厚度。
+	var hook: Vector3 = plate_transform(b).origin + Vector3.UP * 0.7
+	var ring: Vector3 = b * RING
+	if not chain_space.can_move(Transform3D(Basis.IDENTITY, hook), Transform3D(Basis.IDENTITY, ring)):
+		return false
+	for box: AABB in [body_space.bounds, plate_space.bounds]:
+		var at := b if box == body_space.bounds else plate_transform(b)
+		for x: float in [box.position.x, box.end.x]:
+			for z: float in [box.position.z, box.end.z]:
+				if not _supported(at * Vector3(x, 0, z)):
+					return false
+	return true
+
+
+func patrol_routes() -> Array[Dictionary]:
+	if not patrol_cache.is_empty():
+		return patrol_cache
+	var centers: Array[Vector3] = [maze.block_center(maze.gen.n / 2, maze.gen.n / 2) + Vector3.UP * maze.gen.TOP_TIER * maze.gen.TIER_H]
+	for court: Rect2i in maze.gen.courtyards:
+		var p := court.position + court.size / 2
+		centers.append(maze.block_center(p.x, p.y) + Vector3.UP * maze.gen.floor_height(p.x, p.y))
+	for center: Vector3 in centers:
+		# 顶层入口的楼梯会切掉平地一角；按实际空间选巡游半径。
+		for radius: float in [3.0, 2.0]:
+			var valid := true
+			var previous := patrol_transform(center, radius, 0.0)
+			for step in 128:
+				var at := patrol_transform(center, radius, TAU * (step + 1) / 128.0)
+				if not patrol_step_clear(previous, at):
+					valid = false
+					break
+				previous = at
+			if valid:
+				patrol_cache.append({"center": center, "radius": radius})
 				break
-		if not flat or not _seen(eye, a, side, ground):
+	return patrol_cache
+
+
+func find_patrol(cam: Camera3D) -> Dictionary:
+	for site: Dictionary in patrol_routes():
+		var center: Vector3 = site.center
+		var dist := cam.global_position.distance_to(center)
+		if dist > FAR or not cam.is_position_in_frustum(center + Vector3.UP * 13.0):
 			continue
-		from = Vector3(a.x, ground, a.z)
-		dir = side
-		travelled = 0.0
-		alpha = 0.0
-		leaving = false
-		sound_t = rng.randf_range(1.0, 3.0)
-		walking = true
-		visible = true
-		_pose(0.0)
-		return true
-	return false
+		var query := PhysicsRayQueryParameters3D.create(cam.global_position, center + Vector3.UP * 13.0)
+		query.exclude = [player.get_rid()]
+		if get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+			return site
+	return {}
 
 
-func _seen(eye: Vector3, a: Vector3, side: Vector3, ground: float) -> bool:
-	var space := get_world_3d().direct_space_state
-	var ex: Array[RID] = []
-	if player is CollisionObject3D:
-		ex.append((player as CollisionObject3D).get_rid())
-	var clear := 0
-	for k in 3:
-		var p := a + side * PATH * (0.2 + 0.3 * k)
-		var q := PhysicsRayQueryParameters3D.create(eye, Vector3(p.x, ground + 13.0, p.z))
-		q.exclude = ex
-		if space.intersect_ray(q).is_empty():
-			clear += 1
-	return clear >= 2
-
-
-## 某处的地面高度：迷宫里取最近一块平地（墙块取它所在层的地面），出了迷宫是装饰迷宫的地面 0；拿不准返回 NAN
-func _ground(p: Vector3) -> float:
-	if maze == null or maze.gen == null:
-		return NAN
-	var gen: RefCounted = maze.gen
-	var b: Vector2 = maze.world_to_block(p)
-	var x := int(b.x)
-	var z := int(b.y)
-	if x < 0 or z < 0 or x >= gen.n or z >= gen.n:
-		return 0.0
-	for r in 3:
-		for dz in range(-r, r + 1):
-			for dx in range(-r, r + 1):
-				var qx := x + dx
-				var qz := z + dz
-				if qx < 0 or qz < 0 or qx >= gen.n or qz >= gen.n:
-					continue
-				if gen.kind[qz][qx] == 1 and is_nan(gen.overpass[qz][qx]):   # FLOOR
-					return gen.height[qz][qx]
-	return NAN
+func start_patrol(site: Dictionary) -> void:
+	patrol_center = site.center
+	patrol_radius = site.radius
+	patrol_angle = rng.randf_range(0, TAU)
+	global_transform = patrol_transform(patrol_center, patrol_radius, patrol_angle)
+	dir = global_basis.z
+	travelled = 0.0
+	alpha = 0.0
+	sound_t = rng.randf_range(1.0, 3.0)
+	walking = true
+	visible = true
+	idle_t = 0.0
+	_pose(0.0)
 
 
 func _walk(delta: float, cam: Camera3D) -> void:
-	travelled += SPEED * delta
-	var pos := from + dir * travelled
-	var near := Vector2(pos.x - cam.global_position.x, pos.z - cam.global_position.z).length() < FADE_NEAR
-	var indoor: bool = soundscape != null and soundscape.indoor
-	if near or indoor or travelled > PATH - SPEED * FADE_TIME:
-		leaving = true
-	alpha = move_toward(alpha, 0.0 if leaving else 1.0, delta / FADE_TIME)
-	if leaving and alpha <= 0.0:
-		walking = false
-		visible = false
-		idle_t = 0.0
-		return
+	# 循环巡游不参考玩家位置；分小段扫过转弯，不因低帧率跨过障碍。
+	var remaining := SPEED * delta
+	while remaining > 0.00001:
+		var step := minf(remaining, patrol_radius * 0.04)
+		var angle := patrol_angle + step / patrol_radius
+		var destination := patrol_transform(patrol_center, patrol_radius, angle)
+		if not patrol_step_clear(global_transform, destination):
+			break
+		patrol_angle = angle
+		global_transform = destination
+		dir = global_basis.z
+		travelled += step
+		remaining -= step
+	alpha = move_toward(alpha, 1.0, delta / FADE_TIME)
 	for m in mats:
 		m.albedo_color.a = alpha
 	_pose(travelled)
+	var plate_at := plate_transform(global_transform)
+	var hook: Vector3 = plate_at.origin + Vector3.UP * 0.7
+	if global_position.distance_to(cam.global_position) > FAR and not body_space.on_screen(global_position, global_basis, cam) and not plate_space.on_screen(plate_at.origin, plate_at.basis, cam) and not chain_space.segment_on_screen(hook, global_transform * RING, cam):
+		walking = false
+		visible = false
+		next_t = rng.randf_range(GAP_MIN, GAP_MAX)
+		return
 	sound_t -= delta
 	if sound_t <= 0.0 and alpha > 0.5:
 		sound_t = rng.randf_range(5.0, 8.0)
@@ -248,8 +280,7 @@ func _swing(name: String, angle: float) -> void:
 ## 锅炉罩一点一点；铁板拖在身后，链子从挽具背后的铁环拉到铁板
 func _pose(dist: float) -> void:
 	var ph := dist / STRIDE * PI
-	global_position = from + dir * dist
-	global_basis = Basis.looking_at(-dir, Vector3.UP) * Basis.from_scale(Vector3.ONE * SCALE)
+	model.scale = Vector3.ONE * SCALE
 	model.position = Vector3(0, -absf(sin(ph)) * 0.3, 0)
 	model.rotation = Vector3(0, sin(ph) * 0.04, sin(ph) * 0.03)
 	for side in [["l", 1.0], ["r", -1.0]]:
