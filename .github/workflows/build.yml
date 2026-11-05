@@ -22,34 +22,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cleanup:
-    if: github.event_name == 'pull_request' && github.head_ref == 'codex/hanged-one'
-    runs-on: ubuntu-24.04
-    permissions:
-      actions: write
-    steps:
-      - name: 取消本分支已卡住的两次旧检查
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import urllib.error
-          import urllib.request
-          for run_id in [42050955881, 42051241644]:
-              req = urllib.request.Request(
-                  f'https://api.github.com/repos/imelonkid/leviathan/actions/runs/{run_id}/cancel',
-                  data=b'', method='POST',
-                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                           'Accept': 'application/vnd.github+json'})
-              try:
-                  with urllib.request.urlopen(req) as response:
-                      print(run_id, response.status)
-              except urllib.error.HTTPError as error:
-                  if error.code != 409:
-                      raise
-                  print(run_id, 'already stopped')
-          PY
   export:
     runs-on: ubuntu-24.04
     steps:
