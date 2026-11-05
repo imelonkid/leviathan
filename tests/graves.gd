@@ -55,6 +55,7 @@ func run() -> void:
 		maze.build()
 		maze.set_process(false)
 		maze.graves.set_process(false)
+		maze.graves.crows.set_process(false)
 		await physics_frame
 		await physics_frame
 		check(not is_instance_valid(previous), "Previous grave nodes survived maze replacement")
