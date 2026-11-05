@@ -5,6 +5,7 @@ const Materials = preload("res://scripts/creature_materials.gd")
 const Gen = preload("res://scripts/maze_gen.gd")
 const Tap = preload("res://assets/audio/threshold/measure_tap.wav")
 const DragShader = preload("res://scripts/rooms/blood.gdshader")
+const Crows = preload("res://scripts/crows.gd")
 const KINDS := ["grave_mound", "grave_open", "grave_wall"]
 const QUOTAS := [8, 8, 5]
 const DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
@@ -24,6 +25,7 @@ var trees: Array[StaticBody3D] = []
 var voice: AudioStreamPlayer3D
 var sound_rng := RandomNumberGenerator.new()
 var sound_timer := 0.0
+var crows: Node3D
 
 
 func build() -> void:
@@ -70,6 +72,11 @@ func build() -> void:
 	add_child(voice)
 	sound_rng.seed = maze.seed_value + 73092
 	sound_timer = sound_rng.randf_range(20, 40)
+	crows = Crows.new()
+	crows.name = "Crows"
+	crows.maze = maze
+	add_child(crows)
+	crows.build(trees)
 
 
 func _place(kind: String, transform: Transform3D) -> StaticBody3D:
