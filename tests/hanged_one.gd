@@ -120,11 +120,15 @@ func run() -> void:
 			query.shape = body.get_child(1).shape
 			query.collision_mask = 1
 			query.exclude = [body.get_rid()]
+			var resting_head: Vector3 = anchor + figure.basis * Hanged.HEAD_POINT
+			var head_swing := 0.0
 			for step in 180:
 				figures.advance(figure, 0.1, false)
 				check(body.global_position.is_equal_approx(anchor), "Suspension point moved")
+				head_swing = maxf(head_swing, (body.global_transform * Hanged.HEAD_POINT).distance_to(resting_head))
 				query.transform = body.global_transform * body.get_child(1).transform
 				check(main.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty(), "Swing body intersects wall/tree/grave")
+			check(head_swing > 0.075 and head_swing < 0.095, "Head swing should be noticeable but stay within clearance")
 			var pose := body.global_transform
 			var phase: float = figure.phase
 			for frame in 30:
@@ -132,7 +136,7 @@ func run() -> void:
 			check(figure.phase == phase and body.global_transform == pose and figure.frozen, "Deadlight failed to freeze exact pose")
 			figures.advance(figure, Hanged.STEP, false)
 			check(not figure.frozen and figure.phase != phase, "Sway did not resume")
-			check((body.global_transform * Vector3.DOWN * 2.6).distance_to(pose * Vector3.DOWN * 2.6) < 0.005, "Resume snapped to new pose")
+			check((body.global_transform * Hanged.HEAD_POINT).distance_to(pose * Hanged.HEAD_POINT) < 0.005, "Resume snapped to new pose")
 		# 实际物理世界中，用玩家尺寸胶囊扫过实体。
 		await physics_frame
 		for figure: Dictionary in figures.figures:
@@ -178,6 +182,17 @@ func integration(main: Node3D, figures: Node3D) -> void:
 	figures._physics_process(Hanged.STEP)
 	check(figure.phase != phase and not figure.frozen, "Sway did not resume when real beam left")
 	phase = figure.phase
+	# 光锥边缘仅扫到头部时也要冻结；避免将世界坐标整体放大后取样。
+	var origin: Vector3 = main.lev.beam_pivot.global_position
+	var head_position: Vector3 = figure.body.global_transform * Hanged.HEAD_POINT
+	main.lev.beam_pivot.global_position = head_position + Vector3(50, -8, 0)
+	beam.global_basis = Basis.looking_at(Vector3.LEFT, Vector3.UP) * Basis(Vector3.RIGHT, PI / 2)
+	main.lev.beams[1].global_basis = Basis.looking_at(Vector3.RIGHT, Vector3.UP) * Basis(Vector3.RIGHT, PI / 2)
+	check(main.lev.beam_exposure(head_position) > 0.01 and main.lev.beam_exposure(figure.body.global_transform * Hanged.BODY_CENTER) < 0.01 and main.lev.beam_exposure(figure.anchor) < 0.01, "Test beam should expose only head")
+	figures.clock = 1
+	figures._physics_process(Hanged.STEP)
+	check(figure.phase == phase and figure.frozen, "Head-only deadlight did not freeze sway")
+	main.lev.beam_pivot.global_position = origin
 	beam.global_basis = old
 	main.lev.beams[1].global_basis = other_basis
 	# 后台和远处仅休眠，不隐藏或删除实体。

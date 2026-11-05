@@ -6,10 +6,11 @@ const STEP := 1.0 / 30.0
 const ACTIVE_DISTANCE := 70.0
 const COLLISION_LAYER := 4
 const BODY_CENTER := Vector3(0, -1.65, 0)
+const HEAD_POINT := Vector3(0, -2.6, 0)
 const BODY_HEIGHT := 1.98
 const BODY_RADIUS := 0.29
-const SWAY_X := 0.021 # 1.2°；绳端固定，头部位移不超过 9 cm。
-const SWAY_Z := 0.012
+const SWAY_X := 0.0315 # 主摆约 1.8°、横摆约 1.0°；较初版放大 50%。
+const SWAY_Z := 0.018
 
 var maze: Node3D
 var trees: Array[StaticBody3D] = []
@@ -116,7 +117,7 @@ func _physics_process(delta: float) -> void:
 			var center: Vector3 = figure.body.global_transform * BODY_CENTER
 			var exposure: float = main.lev.beam_exposure(center)
 			exposure = maxf(exposure, main.lev.beam_exposure(figure.anchor))
-			exposure = maxf(exposure, main.lev.beam_exposure(figure.body.global_transform * Vector3.DOWN * 2.6))
+			exposure = maxf(exposure, main.lev.beam_exposure(figure.body.global_transform * HEAD_POINT))
 			advance(figure, STEP, exposure > 0.01)
 	interval = STEP if nearby else 1.0
 
