@@ -78,6 +78,8 @@ Fifteen doors in every maze lead somewhere. Each room is put together the moment
 
 Creatures have three temperaments: **dangerous** (the watchman pursues), **neutral** (the hauler follows its own patrol), and **timid** (surveyors and the door holder flee). Movement checks body volumes over the whole segment, including corners; the hauler also needs space for its plate and chain, which currently limits it to the summit plaza in the three regression maps. Timid creatures are reclaimed only after 22 seconds, beyond 45 m, and fully off screen; the hauler requires 120 m and its body, plate and chain to be off screen. Looking at them, approaching them, or blocking their escape does not make them fade away. Generating a new maze still resets the creatures.
 
+**Hanged One (local licensed-asset prototype):** three suspended figures sway gently beneath cemetery branches and freeze in place under deadlight, resuming smoothly when it passes. The shared *Last Offering* model is installed locally via BlenderKit and optimized to 11,899 triangles with 1K textures. Royalty Free source assets are excluded from this public repository and all public export presets; public builds skip these figures until distribution rights are resolved. See [local setup and licensing](docs/hanged-one.md) and [measured costs](docs/entity-costs.md).
+
 ## 📦 Download
 
 Grab the latest build for your platform from **[Releases](https://github.com/imelonkid/leviathan/releases/latest)**, unzip, and run.
@@ -111,6 +113,8 @@ You start on the outer terrace, looking across the maze at the Leviathan. Your g
 **Gliding:** rising and gliding drain the energy bar at the bottom of the screen, and walking refills it (about 50 m for a full bar). When it runs out, you drop. You can rise about 13 m above the ground you last stood on: enough to see over the maze walls, not enough to climb the next tier's retaining wall. The stairs are still the way up.
 
 ## ⚙️ Graphics settings
+
+New players start on **Medium**, with a **1080p 3D resolution ceiling** and **60 FPS**. The ceiling preserves the window aspect ratio and limits 3D rendering on Retina, 4K and fullscreen displays while leaving text and menus at their native resolution. Choose 900p / 1080p / 1440p / Native; the lower of this ceiling and the render-scale slider applies, and resizing recalculates it. Existing quality preferences are preserved; configurations without the new option use 1080p. For lower sustained load, select Medium, 1080p and 30 FPS.
 
 The <kbd>Esc</kbd> menu offers Low / Medium / High presets, plus individual toggles for volumetric fog, SSAO, glow, shadow distance, render scale (FSR upscaling below 100%), puddle reflections (screen-space, on by default only on High), cloud quality (Medium and Low march the storm clouds at half resolution; Low also drops the cloud ring), fullscreen, V-Sync, mouse sensitivity, arrow-key look speed, music volume, ambience volume (rain, the Leviathan's hum, sounds in the rooms), and a photo mode that unlocks free flight through walls.
 

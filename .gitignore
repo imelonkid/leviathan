@@ -2,6 +2,7 @@
 .godot/
 /android/
 export/
+/assets/private/
 
 # —— 密钥：一律不进 git ——
 .env

@@ -19,7 +19,44 @@ func run() -> void:
 	root.size = Vector2i(1600, 900)
 	var settings := Settings.new()
 	check(settings.values.frame_limit == 1, "New or missing setting must default to 60 FPS")
+	check(settings.values.preset == "medium" and settings.values.resolution_limit == 1, "Fresh settings must default to medium / 1080p")
+	for key: String in Settings.PRESETS.medium:
+		check(settings.values[key] == Settings.PRESETS.medium[key], "Medium default differs from preset: " + key)
 	root.add_child(settings)
+	settings.values.fullscreen = false
+	var original_scale: float = settings.values.render_scale
+	var original_limit: int = settings.values.resolution_limit
+	settings.values.render_scale = 1.0
+	settings.values.resolution_limit = 1
+	check(is_equal_approx(settings.render_scale_for(Vector2(3840, 2160)), 0.5), "4K must cap to 1080p")
+	check(is_equal_approx(settings.render_scale_for(Vector2(3024, 1898)), 1080.0 / 1898.0), "Retina aspect ratio must be preserved")
+	check(is_equal_approx(settings.render_scale_for(Vector2(5120, 1440)), 1920.0 / 5120.0), "Ultrawide width must stay within limit")
+	check(is_equal_approx(settings.render_scale_for(Vector2(1280, 720)), 1.0), "Small windows must not upscale")
+	for index in 3:
+		settings.values.resolution_limit = index
+		var limit: Vector2 = Settings.RESOLUTION_LIMITS[index]
+		var actual := Vector2(3840, 2160) * settings.render_scale_for(Vector2(3840, 2160))
+		check(actual.is_equal_approx(limit), "Resolution choice did not apply")
+	settings.values.resolution_limit = 1
+	settings.values.render_scale = 0.4
+	check(is_equal_approx(settings.render_scale_for(Vector2(3840, 2160)), 0.4), "Lower manual scale must be respected")
+	settings.values.resolution_limit = 3
+	settings.values.render_scale = 0.95
+	check(is_equal_approx(settings.render_scale_for(Vector2(3840, 2160)), 0.95), "Native choice must preserve manual scale")
+	settings.values.resolution_limit = 1
+	settings.values.render_scale = 1.0
+	settings.apply()
+	root.size = Vector2i(3840, 2160)
+	await process_frame
+	await process_frame
+	check(is_equal_approx(root.scaling_3d_scale, 0.5), "Resize did not update 3D rendering budget")
+	check(root.content_scale_mode == Window.CONTENT_SCALE_MODE_DISABLED, "Render budget must not scale the UI viewport")
+	root.size = Vector2i(1600, 900)
+	await process_frame
+	await process_frame
+	check(is_equal_approx(root.scaling_3d_scale, 1.0), "Shrinking window left a stale render scale")
+	settings.values.render_scale = original_scale
+	settings.values.resolution_limit = original_limit
 	# 只在内存里切档，不写玩家的配置文件。
 	for index in Settings.FRAME_LIMITS.size():
 		settings.values.frame_limit = index
@@ -41,6 +78,7 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	check(menu.controls.frame_limit.selected == 1, "Frame choice does not reflect setting")
+	check(menu.controls.resolution_limit.selected == original_limit, "Resolution choice does not reflect setting")
 	check(menu.panel.get_combined_minimum_size().y <= 900, "Menu is taller than default window")
 	print("menu minimum: ", menu.panel.get_combined_minimum_size())
 	menu.queue_free()
